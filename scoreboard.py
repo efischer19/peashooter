@@ -8,8 +8,8 @@ from datetime import date, datetime, timedelta
 from html import escape
 from itertools import groupby
 
-from report import LOSS, PENDING, VOID, WIN, clock, event_tag, nickname, pick_result
-from schedule import AWAY, CANCELLED, FINAL, HOME, IN_PROGRESS, NATIONAL, POSTPONED
+from report import LOSS, PENDING, VOID, WIN, clock, event_tag, nba_url, nickname, pick_result, watch_links
+from schedule import CANCELLED, FINAL, IN_PROGRESS, NATIONAL, POSTPONED
 from season import Season
 
 # Primary team colours, for the tricode badges.
@@ -131,10 +131,6 @@ PLAY_ICON = ('<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke
              '<path d="M10 9.2v5.6l4.8-2.8z" fill="currentColor"/></svg>')
 
 
-def nba_url(g) -> str:
-    return f"https://www.nba.com/game/{g.away.lower()}-vs-{g.home.lower()}-{g.id}"
-
-
 def feed_html(name: str, link: str) -> str:
     """A menu line: a link when the feed has one, plain text when it doesn't."""
     if link:
@@ -144,25 +140,21 @@ def feed_html(name: str, link: str) -> str:
 
 def watch_html(g) -> str:
     """Under the game time: full-game highlights once a final game has them; before that, a TV menu with
-    NBA.com (League Pass) and every national and local feed; a plain NBA.com link when there are no feeds.
-    Only for games with a real NBA game id."""
-    if not g.id.isdigit():
+    NBA.com (League Pass) and every national and local feed; a plain NBA.com link when there are no feeds."""
+    links = watch_links(g, nba_label="NBA.com · League Pass")
+    if not links:
         return ""
     matchup = f"{escape(g.away)} @ {escape(g.home)}"
     if g.status == FINAL and g.highlights:
         return (f'<a class="watch" href="{escape(g.highlights)}" target="_blank" rel="noopener" '
                 f'title="Full-game highlights" aria-label="Full-game highlights, {matchup}">{PLAY_ICON}</a>')
-    if g.status == FINAL or not g.broadcasts:
+    if len(links) == 1:
         return (f'<a class="watch" href="{nba_url(g)}" target="_blank" rel="noopener" title="Watch on NBA.com" '
                 f'aria-label="Watch {matchup} on NBA.com">{TV_ICON}</a>')
-    lines = [feed_html("NBA.com · League Pass", nba_url(g))]
-    lines += [feed_html(b.name, b.link) for b in g.broadcasts if b.scope == NATIONAL]
-    for scope, team in ((AWAY, g.away), (HOME, g.home)):
-        lines += [feed_html(f"{nickname(team)}: {b.name}", b.link) for b in g.broadcasts if b.scope == scope]
     local = any(b.scope != NATIONAL for b in g.broadcasts)
     note = "<small>Team feeds are in-market only</small>" if local else ""
     return (f'<details class="tv"><summary title="Where to watch" aria-label="Where to watch {matchup}">{TV_ICON}'
-            f'</summary><div class="menu">{"".join(lines)}{note}</div></details>')
+            f'</summary><div class="menu">{"".join(feed_html(*x) for x in links)}{note}</div></details>')
 
 
 def game_html(season: Season, g, pickers: dict, hidden: set, names: dict) -> str:

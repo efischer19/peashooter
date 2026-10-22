@@ -1,13 +1,15 @@
 """Tracker grid: cell states and the Sheets layout. Offline."""
 
+from dataclasses import replace
 from datetime import datetime, timedelta
 
 import grid as g
 import google_sheet
 import pool
+import report
 import rules
 from conftest import CODES, ET, at, finish, week_schedule
-from schedule import Game
+from schedule import AWAY, FINAL, HOME, NATIONAL, Broadcast, Game
 from teams import team_name
 
 
@@ -115,7 +117,7 @@ def test_sheet_layout(store, season):
     grid = build(store, season, 1, at(season, 1, 0, 12))
     rows = google_sheet.grid_rows(grid)
     assert len(rows) == 1 + 90 + 1 + 3
-    assert [c["userEnteredValue"]["stringValue"] for c in rows[0]["values"][2:]] == ["Alice", "Bob", "Cat", "Highlights"]
+    assert [c["userEnteredValue"]["stringValue"] for c in rows[0]["values"][2:]] == ["Alice", "Bob", "Cat", "Watch"]
     assert rows[1]["values"][0]["userEnteredValue"]["stringValue"] == team_name("ATL")
     assert rows[2]["values"][0]["userEnteredValue"]["stringValue"] == ""  # merged into the cell above
     merges = google_sheet.merge_ranges(grid, 7)
@@ -152,23 +154,36 @@ def test_grid_text_preview(store, season):
     assert "Atlanta Hawks" in text and "Teams left in cycle" in text
 
 
-def test_sheet_links_highlights_and_hides_members_who_never_picked(store, season):
+def test_sheet_hides_members_who_never_picked(store, season):
     games = week_schedule(season, 1)
-    store.upsert_games(finish(games[:1]) + games[1:])
-    store.save_highlights({games[0].id: ("https://www.youtube.com/watch?v=abc", "title")})
-    grid = build(store, season, 1, at(season, 1, 2, 9))
-    assert grid.idle == {"Alice", "Bob", "Cat"}
+    store.upsert_games(games)
+    assert build(store, season, 1, at(season, 1, 2, 9)).idle == {"Alice", "Bob", "Cat"}
     store.add_picks("Bob", 1, "regular", "form", [rules.Decision(games[0].id, games[0].home, True)],
                     at(season, 1, 0, 12))
     grid = build(store, season, 1, at(season, 1, 2, 9))
     assert grid.idle == {"Alice", "Cat"}
-
-    rows = google_sheet.grid_rows(grid)
-    assert rows[0]["values"][-1]["userEnteredValue"]["stringValue"] == "Highlights"
-    linked = [r["values"][-1] for r in rows[1:91] if r["values"][-1]["userEnteredValue"]["stringValue"]]
-    assert len(linked) == 2  # both teams' rows for the finished game
-    assert linked[0]["userEnteredFormat"]["textFormat"]["link"] == {"uri": "https://www.youtube.com/watch?v=abc"}
-
     widths = [r["updateDimensionProperties"] for r in google_sheet.tab_requests(grid, 7)
               if "updateDimensionProperties" in r]
     assert [w["properties"]["hiddenByUser"] for w in widths] == [False, False, True, False, True, False]
+
+
+def test_watch_cell_feeds_before_the_game_and_highlights_after():
+    tip = datetime(2026, 10, 21, 23, 30, tzinfo=ET)
+    espn = Broadcast(NATIONAL, "ESPN", "https://espn.smart.link/x")
+    upcoming = Game("0022600020", tip, "IND", "NOP", broadcasts=(
+        espn, Broadcast(AWAY, "DAZN-IND", "https://dazn.com/ind"), Broadcast(HOME, "GCSEN / WVUE")))
+    cell = google_sheet.watch_cell(report.watch_links(upcoming, "NOP"))
+    assert cell["userEnteredValue"]["stringValue"] == "NBA.com · ESPN · GCSEN / WVUE"
+    runs = cell["textFormatRuns"]
+    assert [r["startIndex"] for r in runs] == [0, 7, 10, 14, 17]
+    assert runs[0]["format"]["link"]["uri"] == report.nba_url(upcoming)
+    assert runs[2]["format"]["link"]["uri"] == "https://espn.smart.link/x" and runs[4]["format"] == {}
+    assert "DAZN-IND" in google_sheet.watch_cell(report.watch_links(upcoming, "IND"))["userEnteredValue"]["stringValue"]
+
+    final = replace(upcoming, status=FINAL, away_score=1, home_score=2)
+    assert report.watch_links(final, "NOP") == [("NBA.com", report.nba_url(final))]
+    video = replace(final, highlights="https://www.youtube.com/watch?v=abc")
+    cell = google_sheet.watch_cell(report.watch_links(video, "NOP"))
+    assert cell["userEnteredValue"]["stringValue"] == "▶ Highlights"
+    assert cell["textFormatRuns"][0]["format"]["link"]["uri"] == "https://www.youtube.com/watch?v=abc"
+    assert google_sheet.watch_cell([]) == google_sheet._cell("")  # synthetic test games have no NBA id

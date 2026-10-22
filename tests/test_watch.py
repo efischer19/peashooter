@@ -8,7 +8,7 @@ from datetime import date, datetime, timezone
 
 import admin
 import highlights
-import scoreboard
+import report
 import sources
 from conftest import at, make_season, week_schedule
 from schedule import AWAY, FINAL, HOME, NATIONAL, Broadcast, Game
@@ -105,10 +105,10 @@ def test_page_menu_lists_every_feed_before_the_game(store, season):
     html = admin.site(season, store, at(season, 1, 1, 9))
     g = games[0]
     assert '<details class="tv">' in html
-    assert f'href="{scoreboard.nba_url(g)}"' in html and ">NBA.com · League Pass ↗</a>" in html
+    assert f'href="{report.nba_url(g)}"' in html and ">NBA.com · League Pass ↗</a>" in html
     assert '<a href="https://espn.smart.link/x" target="_blank" rel="noopener">ESPN ↗</a>' in html
-    assert f">{scoreboard.nickname(g.away)}: DAZN-IND ↗</a>" in html
-    assert f"<span>{scoreboard.nickname(g.home)}: GCSEN / WVUE</span>" in html
+    assert f">{report.nickname(g.away)}: DAZN-IND ↗</a>" in html
+    assert f"<span>{report.nickname(g.home)}: GCSEN / WVUE</span>" in html
     assert "in-market only" in html
 
 
@@ -121,7 +121,7 @@ def test_page_links_highlights_once_final(store, season):
     assert 'href="https://www.youtube.com/watch?v=abc"' in html and 'title="Full-game highlights"' in html
     # a final game without a video falls back to its NBA.com page
     store.upsert_games([replace(games[1], status=FINAL, away_score=100, home_score=110)])
-    assert f'href="{scoreboard.nba_url(games[1])}"' in admin.site(season, store, at(season, 1, 2, 9))
+    assert f'href="{report.nba_url(games[1])}"' in admin.site(season, store, at(season, 1, 2, 9))
 
 
 def test_digest_names_the_national_network(store):

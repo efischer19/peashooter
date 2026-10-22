@@ -10,6 +10,7 @@ from itertools import groupby
 from typing import Optional
 
 import grid as g
+from report import watch_links
 
 STATE_COLORS = {  # background, text
     g.OPEN: ("#ffffff", "#000000"),
@@ -24,7 +25,8 @@ STATE_COLORS = {  # background, text
     g.DROPPED: ("#fce5cd", "#b45f06"),
 }
 HEADER_BG = "#434343"
-TEAM_WIDTH, GAME_WIDTH, MEMBER_WIDTH, VIDEO_WIDTH = 150, 190, 72, 110
+TEAM_WIDTH, GAME_WIDTH, MEMBER_WIDTH, WATCH_WIDTH = 150, 190, 72, 240
+LINK_COLOR = "#1155cc"
 
 
 def rgb(hex_color: str) -> dict:
@@ -33,18 +35,32 @@ def rgb(hex_color: str) -> dict:
 
 
 def _cell(value: str, bg: str = "#ffffff", fg: str = "#000000", bold: bool = False, center: bool = False,
-          note: str = "", top_border: bool = False, italic: bool = False, link: str = "") -> dict:
+          note: str = "", top_border: bool = False, italic: bool = False) -> dict:
     fmt = {"backgroundColor": rgb(bg), "verticalAlignment": "MIDDLE",
            "textFormat": {"foregroundColor": rgb(fg), "bold": bold, "italic": italic}}
     if center:
         fmt["horizontalAlignment"] = "CENTER"
     if top_border:
         fmt["borders"] = {"top": {"style": "SOLID_MEDIUM", "color": rgb("#666666")}}
-    if link:
-        fmt["textFormat"]["link"] = {"uri": link}
     cell = {"userEnteredValue": {"stringValue": value}, "userEnteredFormat": fmt}
     if note:
         cell["note"] = note
+    return cell
+
+
+def watch_cell(links: list, top_border: bool = False) -> dict:
+    """One cell holding several links ("NBA.com · ESPN · DAZN-IND"); unlinked feeds stay plain text."""
+    cell = _cell(" · ".join(label for label, _ in links), top_border=top_border)
+    runs, pos = [], 0  # run indexes count UTF-16 code units
+    for i, (label, link) in enumerate(links):
+        if i:
+            runs.append({"startIndex": pos, "format": {}})
+            pos += 3  # " · "
+        runs.append({"startIndex": pos, "format": {"link": {"uri": link}, "foregroundColor": rgb(LINK_COLOR),
+                                                   "underline": True} if link else {}})
+        pos += len(label.encode("utf-16-le")) // 2
+    if any(link for _, link in links):
+        cell["textFormatRuns"] = runs
     return cell
 
 
@@ -53,7 +69,7 @@ def grid_rows(week_grid: g.WeekGrid) -> list:
     header = [_cell(f"{week_grid.title}", HEADER_BG, "#ffffff", bold=True, note=week_grid.subtitle),
               _cell(week_grid.subtitle, HEADER_BG, "#ffffff", italic=True)]
     header += [_cell(m, HEADER_BG, "#ffffff", bold=True, center=True) for m in week_grid.members]
-    header.append(_cell("Highlights", HEADER_BG, "#ffffff", bold=True, center=True))
+    header.append(_cell("Watch", HEADER_BG, "#ffffff", bold=True))
     rows = [{"values": header}]
     previous = None
     for row in week_grid.rows:
@@ -64,9 +80,7 @@ def grid_rows(week_grid: g.WeekGrid) -> list:
                                          else ("#ffffff", "#000000")), top_border=first)]
         values += [_cell(c.text, *STATE_COLORS[c.state], center=True, note=c.note, top_border=first)
                    for c in row.cells]
-        video = row.game.highlights if row.game and row.game.status == g.FINAL else ""
-        values.append(_cell("▶ Highlights" if video else "", fg="#1155cc", center=True, link=video,
-                            top_border=first))
+        values.append(watch_cell(watch_links(row.game, row.team) if row.game else [], top_border=first))
         rows.append({"values": values})
     if week_grid.summary:
         rows.append({"values": []})
@@ -91,7 +105,7 @@ def merge_ranges(week_grid: g.WeekGrid, sheet_id: int) -> list:
 def tab_requests(week_grid: g.WeekGrid, sheet_id: int) -> list:
     rows = grid_rows(week_grid)
     columns = 2 + len(week_grid.members) + 1
-    widths = [TEAM_WIDTH, GAME_WIDTH] + [MEMBER_WIDTH] * len(week_grid.members) + [VIDEO_WIDTH]
+    widths = [TEAM_WIDTH, GAME_WIDTH] + [MEMBER_WIDTH] * len(week_grid.members) + [WATCH_WIDTH]
     hidden = [False, False] + [m in week_grid.idle for m in week_grid.members] + [False]
     requests = [
         {"unmergeCells": {"range": {"sheetId": sheet_id}}},
@@ -100,7 +114,7 @@ def tab_requests(week_grid: g.WeekGrid, sheet_id: int) -> list:
             "rowCount": len(rows), "columnCount": columns, "frozenRowCount": 1, "frozenColumnCount": 2}},
             "fields": "index,gridProperties(rowCount,columnCount,frozenRowCount,frozenColumnCount)"}},
         {"updateCells": {"start": {"sheetId": sheet_id, "rowIndex": 0, "columnIndex": 0}, "rows": rows,
-                         "fields": "userEnteredValue,userEnteredFormat,note"}},
+                         "fields": "userEnteredValue,userEnteredFormat,note,textFormatRuns"}},
     ]
     requests += [{"mergeCells": {"range": r, "mergeType": "MERGE_ALL"}} for r in merge_ranges(week_grid, sheet_id)]
     requests += [{"updateDimensionProperties": {

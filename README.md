@@ -53,7 +53,7 @@ uv run admin.py remaining --week 4                          # teams left going i
 
 The Sheet shows one "Week N" tab per week of the current cycle, with the current week in front. When a new cycle starts, the previous cycle's tabs are hidden, not deleted: they stay as the record, and you can unhide them in Sheets. `admin.py tabs --week N` sets this up by hand; `sunday`, `monday` and `daily` keep it up to date.
 
-A last **Highlights** column links each finished game's full-game video once one is matched (see below). Members with no picks stored at all have their columns hidden; they reappear on the next rebuild after their first submission.
+A last **Watch** column follows the scoreboard page: before and during a game, links to NBA.com, the national broadcaster and that row's team's local feeds; once final, the full-game highlights video if one is matched (see below), else NBA.com. Members with no picks stored at all have their columns hidden; they reappear on the next rebuild after their first submission.
 
 A **Who's In** tab, right after the current week's tab, lists each member as ✅ In, ⚠️ Late or — for that week, with the time of their last submission. It's built from formulas over the responses tab, so it updates the moment a form comes in, and it never shows picks. The same commands point it at the current week.
 
