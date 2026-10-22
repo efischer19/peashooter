@@ -131,4 +131,12 @@ def test_digest_names_the_national_network(store):
     post = admin.digest(season, store, at(season, 1, 3, 9, 30))
     lines = post.replies[0].splitlines()
     assert lines[1].endswith(" · 📺 ESPN: no picks") and "DAZN" not in post.replies[0]
-    assert "📺 ESPN" in json.dumps(post.blocks[1], ensure_ascii=False)
+    table = next(b for b in post.blocks[1] if b["type"] == "table")
+    assert [c["elements"][0]["elements"][0]["text"] for c in table["rows"][0]] == ["ET", "Game", "Picks", "Watch"]
+    assert table["rows"][1][3]["type"] == "raw_text" and table["rows"][1][3]["text"] == "–"  # no NBA id: no links
+    real = replace(games[16], id="0022600020", broadcasts=(ESPN, DAZN, GCSEN))
+    assert report._links_cell(report.watch_links(real))["elements"][0]["elements"] == [
+        {"type": "link", "url": report.nba_url(real), "text": "NBA.com"}, {"type": "text", "text": " · "},
+        {"type": "link", "url": "https://espn.smart.link/x", "text": "ESPN"}, {"type": "text", "text": " · "},
+        {"type": "link", "url": "https://www.dazn.com/home/abc", "text": f"{report.nickname(real.away)}: DAZN-IND"},
+        {"type": "text", "text": " · "}, {"type": "text", "text": f"{report.nickname(real.home)}: GCSEN / WVUE"}]

@@ -112,8 +112,8 @@ def test_blocks_mirror_the_text(store, season, monkeypatch):
     assert context == ["*Yesterday:* 1 picks · 1 ✅ 0 ❌ · Best day: Alice (1–0)",
                        "<https://example.com/peashooter/|Full scoreboard ↗>"]
     rows = cells(reply[1])
-    assert rows[0] == ["ET", "Game", "Picks"] and len(rows) == 1 + len(wed)
-    assert rows[1] == ["7:30 pm", f"{wed[0].away} @ {wed[0].home}", f"{name(wed[0].home)} — Bob"]
+    assert rows[0] == ["ET", "Game", "Picks", "Watch"] and len(rows) == 1 + len(wed)
+    assert rows[1] == ["7:30 pm", f"{wed[0].away} @ {wed[0].home}", f"{name(wed[0].home)} — Bob", "–"]
     assert rows[2][2] == "–"
 
 
@@ -122,6 +122,6 @@ def test_blocks_hide_unlocked_picks(store, season, monkeypatch):
     store.upsert_games([Game("mon2", at(season, 2, 0, 20, 0), "BOS", "MIA")])
     pick(store, season, "Bob", 2, "mon2", "BOS")
     main, reply = admin.digest(season, store, at(season, 2, 0, 9, 30)).blocks
-    assert cells(reply[1])[1] == ["8 pm", "BOS @ MIA", "🔒"]
+    assert cells(reply[1])[1] == ["8 pm", "BOS @ MIA", "🔒", "–"]
     assert reply[2]["elements"][0]["text"] == "_Week 2 picks lock Mon 7 pm ET and show after that_"
     assert "Full scoreboard" not in str(main)

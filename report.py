@@ -263,6 +263,17 @@ def _cell(text: str, bold: bool = False) -> dict:
         {"type": "text", "text": text, "style": {"bold": True}}]}]}
 
 
+def _links_cell(links: list) -> dict:
+    """A table cell of links separated by dots; unlinked feeds stay plain text. Slack rejects empty cells."""
+    if not links:
+        return _cell("–")
+    parts = []
+    for i, (label, link) in enumerate(links):
+        parts += [{"type": "text", "text": " · "}] if i else []
+        parts.append({"type": "link", "url": link, "text": label} if link else {"type": "text", "text": label})
+    return {"type": "rich_text", "elements": [{"type": "rich_text_section", "elements": parts}]}
+
+
 def digest_blocks(season: Season, week: int, now: datetime, rows: list, yesterday: list, games: list,
                   pickers: dict, hidden: set, site_url: str = "") -> tuple:
     """Block Kit for the morning post, from the same inputs as digest_md: (main blocks, thread blocks or None)."""
@@ -302,10 +313,10 @@ def digest_blocks(season: Season, week: int, now: datetime, rows: list, yesterda
         main.append({"type": "context", "elements": [{"type": "mrkdwn", "text": "_No games today._"}]})
         return main, None
 
-    table, footnotes = [[_cell(h, bold=True) for h in ("ET", "Game", "Picks")]], []
+    table, footnotes = [[_cell(h, bold=True) for h in ("ET", "Game", "Picks", "Watch")]], []
     for g in sorted(games, key=lambda g: g.tip):
         special = season.special_for(g.tip)
-        matchup = f"{g.away} @ {g.home}{event_tag(g)}" + (f" ⭐ {special.points} pts" if special else "") + national_tv(g)
+        matchup = f"{g.away} @ {g.home}{event_tag(g)}" + (f" ⭐ {special.points} pts" if special else "")
         if g.id in hidden:
             note = "⭐ bonus-game picks show once the game tips" if special else \
                 f"Week {week} picks lock {season.deadline(week):%a} {clock(season.deadline(week))} ET and show after that"
@@ -314,11 +325,13 @@ def digest_blocks(season: Season, week: int, now: datetime, rows: list, yesterda
         else:
             picked = pickers.get(g.id, {})
             picks = " · ".join(f"{nickname(t)} — {', '.join(picked[t])}" for t in g.teams if t in picked) or "–"
-        table.append([_cell(clock(g.tip.astimezone(season.tz))), _cell(matchup, bold=True), _cell(picks)])
+        table.append([_cell(clock(g.tip.astimezone(season.tz))), _cell(matchup, bold=True), _cell(picks),
+                      _links_cell(watch_links(g))])
     reply = [{"type": "section", "text": {"type": "mrkdwn",
                                           "text": f"*Today · {len(games)} game{'s' if len(games) != 1 else ''}*"}},
              {"type": "table", "rows": table, "column_settings": [
-                 {"align": "right"}, {"align": "left"}, {"align": "left", "is_wrapped": True}]}]
+                 {"align": "right"}, {"align": "left"}, {"align": "left", "is_wrapped": True},
+                 {"align": "left", "is_wrapped": True}]}]
     if footnotes:
         reply.append({"type": "context", "elements": [{"type": "mrkdwn", "text": "_" + " · ".join(footnotes) + "_"}]})
     return main, reply
