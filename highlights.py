@@ -31,6 +31,15 @@ def playlist_id(path: Path | None = None) -> str:
     return str(raw.get("highlights", {}).get("youtube_playlist", "")).strip()
 
 
+def playlist_url(path: Path | None = None) -> str:
+    """The configured playlist's page, or "" when none is set (or there's no season.toml)."""
+    try:
+        playlist = playlist_id(path)
+    except FileNotFoundError:
+        return ""
+    return f"https://www.youtube.com/playlist?list={playlist}" if playlist else ""
+
+
 def fetch_playlist(playlist: str, timeout: int = 30) -> list:
     """[(video_id, title)] from the playlist's public page, newest first."""
     req = urllib.request.Request(f"https://www.youtube.com/playlist?list={playlist}",

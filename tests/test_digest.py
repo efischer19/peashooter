@@ -31,7 +31,7 @@ def test_yesterday_results_and_no_games_today(store, season):
     assert "🥇 *Alice*: 2 pts (2–0) · +2 yesterday" in lines
     assert "🥈 *Bob*: 0 pts (0–1) · +0 yesterday" in lines
     assert "🥈 *Cat*: 0 pts (0–0)" in lines  # no picks yesterday: no "+N"
-    assert "*Yesterday*: 3 picks, 2 ✅ 1 ❌ · Best day: Alice (2–0)" in lines
+    assert "*Yesterday*: 3 picks · 2 ✅ 1 ❌" in lines
     assert lines[-1] == "_No games today._"
 
 
@@ -96,6 +96,7 @@ def cells(table_block):
 
 def test_blocks_mirror_the_text(store, season, monkeypatch):
     monkeypatch.setenv("PEASHOOTER_SITE_URL", "https://example.com/peashooter/")
+    monkeypatch.setattr(admin.highlights, "playlist_url", lambda: "https://www.youtube.com/playlist?list=PLtest")
     games = week_schedule(season, 1)
     wed = [Game("wed0", at(season, 1, 2, 19, 30), "BOS", "MIA"), Game("wed1", at(season, 1, 2, 20), "NYK", "LAL")]
     store.upsert_games(finish(games[:15]) + games[15:] + wed)
@@ -109,8 +110,9 @@ def test_blocks_mirror_the_text(store, season, monkeypatch):
     assert standings[0] == ["#", "Shooter", "Pts", "W–L", "Yday"]
     assert standings[1:] == [["🥇", "Alice", "1", "1–0", "+1"]]  # 0-point rows are left out
     context = [e["text"] for e in main[2]["elements"]]
-    assert context == ["*Yesterday:* 1 picks · 1 ✅ 0 ❌ · Best day: Alice (1–0)",
-                       "<https://example.com/peashooter/|Full scoreboard ↗>"]
+    assert context == ["<https://example.com/peashooter/|PEAshooter leaderboard ↗>\n"
+                       "*Yesterday:* 1 picks · 1 ✅ 0 ❌\n"
+                       "<https://www.youtube.com/playlist?list=PLtest|Game highlights (YouTube) ↗>"]
     rows = cells(reply[1])
     assert rows[0] == ["ET", "Game", "Picks", "Watch"] and len(rows) == 1 + len(wed)
     assert rows[1] == ["7:30 pm", f"{wed[0].away} @ {wed[0].home}", f"{name(wed[0].home)} — Bob", "–"]

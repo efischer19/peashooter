@@ -206,6 +206,12 @@ def standings_md(season: Season, rows: list) -> str:
     return "\n".join(lines) + "\n"
 
 
+def yesterday_tally(played: dict) -> str:
+    """'6 picks · 3 ✅ 3 ❌' over the members who had picks in yesterday's games."""
+    wins, losses, pending = (sum(r[k] for r in played.values()) for k in ("wins", "losses", "pending"))
+    return f"{wins + losses + pending} picks · {wins} {WIN} {losses} {LOSS}" + (f" {pending} {PENDING}" if pending else "")
+
+
 def digest_md(season: Season, week: int, now: datetime, rows: list, yesterday: list, games: list,
               pickers: dict, hidden: set) -> tuple:
     """The morning post: (standings with yesterday's results, today's games with who picked what, or None).
@@ -223,14 +229,7 @@ def digest_md(season: Season, week: int, now: datetime, rows: list, yesterday: l
             y = played.get(r["member"])
             lines.append(standing_line(r) + (f" · +{y['points']} yesterday" if y else ""))
     if played:
-        wins, losses, pending = (sum(r[k] for r in played.values()) for k in ("wins", "losses", "pending"))
-        summary = f"*Yesterday*: {wins + losses + pending} picks, {wins} {WIN} {losses} {LOSS}" + \
-                  (f" {pending} {PENDING}" if pending else "")
-        best = max(r["points"] for r in played.values())
-        if best:
-            summary += " · Best day: " + ", ".join(f"{r['name']} ({r['wins']}–{r['losses']})"
-                                                   for r in played.values() if r["points"] == best)
-        lines += ["", summary]
+        lines += ["", f"*Yesterday*: {yesterday_tally(played)}"]
     if not games:
         return "\n".join(lines + ["", "_No games today._"]) + "\n", None
 
@@ -275,8 +274,9 @@ def _links_cell(links: list) -> dict:
 
 
 def digest_blocks(season: Season, week: int, now: datetime, rows: list, yesterday: list, games: list,
-                  pickers: dict, hidden: set, site_url: str = "") -> tuple:
-    """Block Kit for the morning post, from the same inputs as digest_md: (main blocks, thread blocks or None)."""
+                  pickers: dict, hidden: set, site_url: str = "", highlights_url: str = "") -> tuple:
+    """Block Kit for the morning post, from the same inputs as digest_md: (main blocks, thread blocks or None).
+    Under the standings, stacked: the scoreboard link, yesterday's tally, the highlights playlist link."""
     off = season.off_week_label(week)
     title = f"🏀 PEAshooter · {now:%a %b %-d} · Week {week}" + (f" ({off})" if off else "")
     main = [{"type": "header", "text": {"type": "plain_text", "text": title, "emoji": True}}]
@@ -295,20 +295,13 @@ def digest_blocks(season: Season, week: int, now: datetime, rows: list, yesterda
                           _cell(f"+{y['points']}" if y else "–")])
         main.append({"type": "table", "rows": table, "column_settings": [
             {"align": "center"}, {"align": "left"}, {"align": "right"}, {"align": "right"}, {"align": "right"}]})
-    notes = []
+    notes = [f"<{site_url}|PEAshooter leaderboard ↗>"] if site_url else []
     if played:
-        wins, losses, pending = (sum(r[k] for r in played.values()) for k in ("wins", "losses", "pending"))
-        summary = f"*Yesterday:* {wins + losses + pending} picks · {wins} {WIN} {losses} {LOSS}" + \
-                  (f" {pending} {PENDING}" if pending else "")
-        best = max(r["points"] for r in played.values())
-        if best:
-            summary += " · Best day: " + ", ".join(f"{r['name']} ({r['wins']}–{r['losses']})"
-                                                   for r in played.values() if r["points"] == best)
-        notes.append(summary)
-    if site_url:
-        notes.append(f"<{site_url}|Full scoreboard ↗>")
+        notes.append(f"*Yesterday:* {yesterday_tally(played)}")
+    if highlights_url:
+        notes.append(f"<{highlights_url}|Game highlights (YouTube) ↗>")
     if notes:
-        main.append({"type": "context", "elements": [{"type": "mrkdwn", "text": n} for n in notes]})
+        main.append({"type": "context", "elements": [{"type": "mrkdwn", "text": "\n".join(notes)}]})
     if not games:
         main.append({"type": "context", "elements": [{"type": "mrkdwn", "text": "_No games today._"}]})
         return main, None

@@ -358,7 +358,8 @@ def digest(season: Season, store: Store, now: datetime, source=None):
     args = (season, week, now, pool.standings(store, season),
             rules.standings(season, [p for p in picks if p.game_id in played], games), todays, pickers, hidden)
     main, reply = report.digest_md(*args)
-    main_blocks, reply_blocks = report.digest_blocks(*args, site_url=os.environ.get("PEASHOOTER_SITE_URL", ""))
+    main_blocks, reply_blocks = report.digest_blocks(*args, site_url=os.environ.get("PEASHOOTER_SITE_URL", ""),
+                                                     highlights_url=highlights.playlist_url())
     return Thread(main, (reply,) if reply else (), (main_blocks, reply_blocks) if reply else (main_blocks,))
 
 
