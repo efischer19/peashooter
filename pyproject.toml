@@ -1,0 +1,20 @@
+[project]
+name = "peashooter"
+version = "0.1.0"
+description = "PEAshooter (Pick 'Em All, Shooter): run a season-long NBA pick 'em pool from Google Forms, Sheets and Slack"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = []
+
+[project.optional-dependencies]
+nba = [
+    "nba-api>=1.11.4",
+]
+google = [
+    "google-api-python-client>=2.201.0",
+    "google-auth-oauthlib>=1.5.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]

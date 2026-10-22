@@ -1,0 +1,133 @@
+# PEAshooter: Pick 'Em All, Shooter
+
+A season-long NBA pick 'em pool for a Slack group: members pick in a Google Form, a deterministic Python CLI on cron checks and scores the picks, and the results go to Slack, a Google Sheet and an optional public scoreboard page.
+
+- Every pick week, each member picks straight-up winners (`picks_per_week`, e.g. 5). A pick is one team in one specific game.
+- Within each cycle (`cycle_weeks`, e.g. 6), no team can be picked twice; with 5 × 6 = 30 you pick every team once.
+- Special games (e.g. the NBA Cup Final and Christmas Day) are everybody-picks-everything, for bonus points.
+- No eliminations: wins are points on a season-long leaderboard.
+
+All rules and the calendar live in one config file; nothing league-specific is in the code. There's no LLM anywhere in the scoring path: validation, deadlines and points are plain, tested Python, and the Google Form responses stay the auditable raw record.
+
+## Status
+
+In use for the 2026-27 season. Working: the rules engine, schedule and score sync, the weekly Google Form and Sheet tracker, Slack posts (a weekly cycle plus a daily digest), and the public scoreboard page, all on cron. Not built yet: a Slack bot that reads DMs for pick fixes (they go through the organizer's `admin.py replace` for now).
+
+## Setup
+
+```sh
+cp season.example.toml season.toml   # your calendar, rules and members
+cp .env.example .env                 # paths and (later) credentials
+uv sync --extra nba --extra google   # nba_api (schedule/scores) and Google client libraries
+uv run pytest
+uv run --extra nba sync.py --all     # load the season's schedule into data/peashooter.db
+uv run --extra nba admin.py site     # optional: build the scoreboard page in data/site/
+```
+
+Run `sync.py` (no flags) daily from cron to pick up final scores. It syncs last week through next week in one request and exits non-zero on failure.
+
+## Running weeks by hand
+
+One Google Form for the whole season, created and updated by `google_form.py` (after the Google setup below):
+
+```sh
+uv run --extra google --extra nba google_form.py --week 1   # creates the form (first run), sets it to week 1, opens it
+```
+
+It asks for **Name** (dropdown from `season.toml`), **Week** (only the current week) and **Picks** (one per line, naming the team *and* its game: `Celtics vs Knicks`, `Celtics @ Knicks` or `Celtics Tue`). The week's schedule goes in the form description. The one manual step: in the form editor, **Responses → Link to Sheets → Create a new spreadsheet**. Then `google_form.py --status` records the Sheet's ID in `.env` and sets its time zone.
+
+Each week:
+
+```sh
+uv run --extra nba admin.py schedule-md --week 3            # Sunday: post the schedule
+uv run --extra google --extra nba google_form.py --week 3   # Sunday: switch the form to week 3 and open it
+uv run --extra google google_form.py --close                # Monday at the deadline
+# Monday after the deadline: File → Download → CSV of the responses tab
+uv run --extra nba admin.py ingest responses.csv --week 3   # post the summary
+uv run --extra nba admin.py replace --week 3 --member "Bob" "Lakers Fri"   # DM fixes during the grace window
+uv run --extra nba admin.py picks --week 3                  # pick sheet with results
+uv run --extra nba admin.py standings
+uv run --extra nba admin.py digest                           # standings + today's games (what cron posts daily)
+uv run admin.py remaining --week 4                          # teams left going into next week
+```
+
+The Sheet shows one "Week N" tab per week of the current cycle, with the current week in front. When a new cycle starts, the previous cycle's tabs are hidden, not deleted: they stay as the record, and you can unhide them in Sheets. `admin.py tabs --week N` sets this up by hand; `sunday`, `monday` and `daily` keep it up to date.
+
+A last **Highlights** column links each finished game's full-game video once one is matched (see below). Members with no picks stored at all have their columns hidden; they reappear on the next rebuild after their first submission.
+
+A **Who's In** tab, right after the current week's tab, lists each member as ✅ In, ⚠️ Late or — for that week, with the time of their last submission. It's built from formulas over the responses tab, so it updates the moment a form comes in, and it never shows picks. The same commands point it at the current week.
+
+Re-running `ingest` with a newer CSV is safe: each member's latest on-time response replaces their earlier one.
+
+## Google setup (one time, ~10 minutes)
+
+PEAshooter signs in to Google as you (OAuth), not as a service account: service accounts have no Drive storage, so they can't own Forms or Sheets in a personal Google account.
+
+1. [console.cloud.google.com](https://console.cloud.google.com): create a project (e.g. "peashooter").
+2. **APIs & Services → Library:** enable the **Google Sheets API** and the **Google Forms API**.
+3. **Google Auth Platform** (formerly the "OAuth consent screen") → *Get started*: app name, your email, audience **External**. Publishing also needs, on the **Branding** page, a home page URL, a privacy policy URL (this repo's `PRIVACY.md` works) and an authorized domain. No logo.
+4. **Audience → Publish app** (status *In production*). In *Testing*, refresh tokens expire after 7 days. Unverified is fine for your own account.
+5. **Clients → Create client → Desktop app**, then **Download JSON** and save it as `~/.config/peashooter/client_secret.json`.
+6. `uv run --extra google google_auth.py`. Sign in, click past "Google hasn't verified this app" (*Advanced → Go to …*), and allow both permissions. The token is saved to `~/.config/peashooter/token.json`.
+7. Put the Sheet and Form IDs in `.env` and run `uv run --extra google google_auth.py --check`.
+
+Copy the two JSON files to wherever the bot runs; the token refreshes itself.
+
+## Slack setup (posting)
+
+1. [api.slack.com/apps](https://api.slack.com/apps) → **Create New App → From a manifest** → pick the workspace → paste `slack_manifest.yaml`.
+2. **Install to Workspace**, then copy the **Bot User OAuth Token** (`xoxb-…`) into `.env` as `SLACK_BOT_TOKEN`.
+3. In Slack, `/invite @PEAshooter` to the channel, and put its ID (channel name → *About*, bottom: `C…`) in `.env` as `SLACK_CHANNEL_ID`. Start with a test channel and swap in the real one at launch.
+4. Add `--post` to any `admin.py` command to post its output, e.g. `admin.py --post reminder`.
+
+## Running it on a schedule
+
+`deploy/crontab.example` runs the week (times ET):
+
+- Sunday 11:00 `sunday`: open the form for the coming week, write its availability grid, post the schedule.
+- Monday 17:00 `reminder`, then 18:45 `monday`: close the form, ingest, rebuild the grid, post the summary.
+- Daily 4:00 `daily`: sync scores and highlights, rebuild the grids. 4:15 `digest`: standings with each member's points from yesterday, then today's games and who picked what in its thread. 4:20 (and Monday 18:50, right after the lock): publish the scoreboard page.
+
+Picks in the digest and on the page follow the grid's rules: regular picks appear once the week locks, and special-game picks once that game tips. Run everything from one machine, since the local database is part of the record.
+
+## Public scoreboard page (optional)
+
+`admin.py site` writes `data/site/index.html`: standings, this week's and last week's games by day, and who picked what once picks lock. Members appear only by their `alias` in `season.toml` (or "Shooter N"), never by name, and nothing links to the form or the Sheet. `deploy/publish_site.sh` builds it and uploads it to an S3 prefix (`SITE_S3`, `AWS_PROFILE`); set `PEASHOOTER_SITE_URL` in `.env` and the digest links to it. Give the uploading IAM user `s3:PutObject` on that prefix only.
+
+Each game card has a watch link under its time:
+
+- **Before and during the game:** a TV menu with the game's NBA.com page (League Pass), the national broadcaster, and each team's local TV and streaming feeds, as listed in the schedule feed. Feeds with a watch link (DAZN, ESPN, NBC Sports and others) open it; the rest are plain text. Local feeds are in-market only, and League Pass blacks out US national games, so the menu lists every option. The digest names the national network next to each of today's games.
+- **After the game:** full-game highlights on YouTube, if `[highlights] youtube_playlist` is set in `season.toml`. `daily` (and `sync.py`) match videos titled `AWAY at HOME | FULL GAME HIGHLIGHTS | Month D, YYYY` to games by teams and date. A YouTube failure is reported but never fails the run. Without a match, the link goes to the game's NBA.com page.
+
+## Data source
+
+Schedules and scores come from stats.nba.com via [nba_api](https://github.com/swar/nba_api) (`[source] kind = "nba_api"`). The plan is to switch to [hoopstat-haus](https://github.com/efischer19/hoopstat-haus) once it can serve them. Any object with `games(start, end) -> list[Game]` works as a source; `kind = "fixture"` reads a local JSON file for testing.
+
+`season.toml`, `.env`, `data/` and service-account files are git-ignored. Keep credentials there or in the environment, never in code.
+
+## Layout
+
+| File | Purpose |
+|---|---|
+| `season.py` | Loads `season.toml`: weeks, cycles, deadlines, off weeks, specials, members |
+| `teams.py` | NBA teams and fuzzy name matching ("Sixers", "Timberwovles") |
+| `schedule.py` | `Game` and the `ScheduleSource` interface; `FixtureSource` reads a local JSON file |
+| `rules.py` | Pure validation, scoring, standings and DM pick parsing |
+| `store.py` | SQLite storage, the source of truth (`PEASHOOTER_DB`) |
+| `pool.py` | Pool operations combining the store and the rules |
+| `sources.py` | nba_api source and `[source]` config |
+| `sync.py` | Cron entry point: pull schedule and scores into the store |
+| `report.py` | Slack-ready text and Block Kit: schedules, pick sheets, summaries, standings, the daily digest |
+| `scoreboard.py` | The public scoreboard page (HTML), aliases only |
+| `highlights.py` | Matches full-game highlight videos from a YouTube playlist to finished games |
+| `admin.py` | CLI for running the pool by hand |
+| `env.py` | Loads `.env` |
+| `google_auth.py` | One-time Google sign-in, plus `--check` |
+| `google_form.py` | Creates the season's form, sets it up each week, opens and closes it |
+| `grid.py`, `google_sheet.py` | The per-week tracker grid, and writing it as a Sheet tab |
+| `slack_post.py` | Posts to Slack (`chat:write`), with thread replies |
+| `deploy/` | Example crontab and the scoreboard publish script |
+
+## License
+
+MIT. See also the [privacy policy](PRIVACY.md).

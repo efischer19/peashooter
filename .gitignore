@@ -1,0 +1,13 @@
+# Local league config, secrets and state
+season.toml
+.env
+data/
+*.db
+service-account*.json
+client_secret*.json
+token.json
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/

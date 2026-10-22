@@ -1,0 +1,56 @@
+# PEAshooter season config. Copy to season.toml (git-ignored) and fill in your league.
+# Point PEASHOOTER_SEASON at a different file to keep config elsewhere.
+
+[season]
+name = "PEAshooter 2026-27"
+timezone = "America/New_York"   # all dates and times below are in this zone
+week1_start = 2026-10-19        # pick weeks run 7 days from this date (Mon-Sun here); opening night is Tue Oct 20
+weeks = 25                      # last regular-season games are Sun 2027-04-11
+picks_per_week = 5
+cycle_weeks = 6                 # no team twice per cycle; 5 x 6 = all 30 teams
+points_per_win = 1
+deadline_day = "monday"         # form picks lock on this day of each pick week...
+deadline_time = "18:45"         # ...at this time; games tipping at or before it can't be picked (7 pm tips can)
+grace_hours = 24                # dropped picks can be replaced by DM until deadline + grace
+
+# Weeks with no regular picks (they sit outside the cycles, which pause rather than break).
+# Off weeks can change mid-season: cycles count regular weeks from the start, so adding or
+# removing an off week only moves weeks after it. Decide before that week's form goes out.
+# 2026-27: 24 regular weeks = 4 cycles of 6 (Oct 19, Nov 30, Jan 18, Mar 1), the last two
+# breaking cleanly at the All-Star break (Feb 19-24, which every team still plays through).
+[off_weeks]
+8 = "NBA Cup Final week"        # Dec 7-13; two teams have no regular game, most have one
+
+# Everybody-picks-everything bonus games, on top of regular picks. Every game tipping on `date` (local) counts.
+[[specials]]
+name = "NBA Cup Final"
+date = 2026-12-11               # Fri; game ID prefix 006
+points = 5
+
+[[specials]]
+name = "Christmas Day"
+date = 2026-12-25
+points = 2
+
+# Where schedules and scores come from.
+[source]
+kind = "nba_api"                # needs `uv sync --extra nba`; or "fixture" with path = "games.json"
+nba_season = "2026-27"
+# game_types = ["002", "006"]   # NBA game ID prefixes: regular season + Cup Final
+
+# Optional: link each finished game to its full-game highlights video, matched by title from a YouTube playlist
+# ("AWAY at HOME | FULL GAME HIGHLIGHTS | October 21, 2026"). This is the NBA's playlist for 2026-27.
+[highlights]
+youtube_playlist = "PLftRqjkDhxkg"
+
+# Pool members. `name` is each member's key and their entry in the form's dropdown, so keep it stable.
+# slack_id (optional until the Slack bot) is the member's Slack user ID: profile -> ... -> Copy member ID.
+# alias (optional) is the only name the public scoreboard page (`admin.py site`) shows; without one it says "Shooter N".
+[[members]]
+slack_id = "U00000001"
+name = "Player One"
+alias = "Sharpshooter"
+
+[[members]]
+slack_id = "U00000002"
+name = "Player Two"

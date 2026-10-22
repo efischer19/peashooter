@@ -1,0 +1,24 @@
+# PEAshooter weekly schedule. Install with `crontab -e` on the machine that runs the pool.
+# Cron uses the machine's local time: these assume America/New_York (adjust if not).
+# Run everything from ONE machine: the local database (data/peashooter.db) is part of the record.
+SHELL=/bin/zsh
+PEASHOOTER=/path/to/peashooter
+UV=/opt/homebrew/bin/uv
+# Optional public scoreboard: an S3 prefix, an AWS CLI profile that can write to it, and a short cache time
+AWS=/opt/homebrew/bin/aws
+SITE_S3=s3://your-bucket/peashooter
+AWS_PROFILE=peashooter
+
+# Sunday 11:00   open the coming week's form, write its availability grid, post the schedule
+0 11 * * 0   cd $PEASHOOTER && $UV run --extra google --extra nba admin.py --post sunday   >> data/cron.log 2>&1
+# Monday 17:00   nudge whoever hasn't picked
+0 17 * * 1   cd $PEASHOOTER && $UV run --extra google --extra nba admin.py --post reminder  >> data/cron.log 2>&1
+# Monday 18:45   deadline: close the form, ingest, rebuild the grid, post the summary
+45 18 * * 1  cd $PEASHOOTER && $UV run --extra google --extra nba admin.py --post monday    >> data/cron.log 2>&1
+# Daily 04:00    sync scores and colour in results (no post)
+0 4 * * *    cd $PEASHOOTER && $UV run --extra google --extra nba admin.py daily            >> data/cron.log 2>&1
+# Daily 04:15    digest: standings with yesterday's results, today's games and who picked what (thread)
+15 4 * * *   cd $PEASHOOTER && $UV run --extra google --extra nba admin.py --post digest    >> data/cron.log 2>&1
+# Daily 04:20 and Monday 18:50 (just after the lock, so picks show): rebuild and publish the scoreboard page
+20 4 * * *   cd $PEASHOOTER && deploy/publish_site.sh >> data/cron.log 2>&1
+50 18 * * 1  cd $PEASHOOTER && deploy/publish_site.sh >> data/cron.log 2>&1
