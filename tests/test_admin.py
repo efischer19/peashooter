@@ -165,7 +165,8 @@ def test_override_accepts_a_ruling_after_tip_and_grace(tmp_path):
     season, store, responses = setup(tmp_path, [
         csv_row(at(s, 1, 0, 12), "Bob", "Week 1", [tue_pick(i) for i in range(9)] + ["Warriors"])])
     admin.ingest(season, store, responses, 1)
-    wed = at(season, 1, 2, 9)  # Tuesday's games have tipped and the grace window has closed
+    store.upsert_games(finish([g for g in week_schedule(season, 1) if g.tip.weekday() == 1]))
+    wed = at(season, 1, 2, 9)  # Tuesday's games are final and the grace window has closed
 
     out = admin.replace(season, store, 1, "Bob", "Warriors tue", wed)
     assert "❌" in out and pool.open_slots(store, season, "Bob", 1) == 1

@@ -171,7 +171,8 @@ def replace(season: Season, store: Store, week: int, name: str, text: str, now: 
         raise ValueError(f"{name!r} isn't on the roster")
     refresh(store, season, source, [week])
     after = season.deadline(week) if override else now
-    parsed = rules.parse_picks(text, pool.week_games(store, season, week), after=after, tz=season.tz)
+    parsed = rules.parse_picks(text, pool.week_games(store, season, week), after=after, tz=season.tz,
+                               scheduled_only=not override)
     selections = [(p.game_id, p.team) for p in parsed if p.game_id]
     decisions = pool.submit_override(store, season, member, week, selections, now, override) if override else \
         pool.submit_replacements(store, season, member, week, selections, now)

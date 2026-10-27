@@ -141,13 +141,13 @@ class ParsedPick:
         return Decision("", self.team or "", False, UNPARSED, f'"{self.text}": {self.error}')
 
 
-def parse_picks(text: str, games: list, after: datetime, tz) -> list:
+def parse_picks(text: str, games: list, after: datetime, tz, scheduled_only: bool = True) -> list:
     """Turn DM text like "BOS, Lakers over Nuggets, Heat Fri" into (team, game) picks.
 
     One pick per line; on a single line, commas or semicolons separate picks. The first team named is the
     pick, unless a team is named twice ("ORL @ NYK - Knicks" is the Knicks); another team or a weekday narrows
     which game ("celtics, BOS @ DET" is the Celtics at Detroit).
-    Only games tipping after `after` are considered.
+    Only games tipping after `after` are considered, and (unless `scheduled_only` is off) only unplayed ones.
     """
     out = []
     lines = [line for line in text.splitlines() if line.strip()]
@@ -164,7 +164,7 @@ def parse_picks(text: str, games: list, after: datetime, tz) -> list:
         opponent = next((t for t in named if t != team), None)
         day = next((d for d in map(_weekday, re.findall(r"[a-z]+", chunk.lower())) if d is not None), None)
         candidates = [g for g in sorted(games, key=lambda g: g.tip)
-                      if team in g.teams and g.tip > after and g.status == SCHEDULED
+                      if team in g.teams and g.tip > after and (g.status == SCHEDULED or not scheduled_only)
                       and (opponent is None or opponent in g.teams)
                       and (day is None or g.tip.astimezone(tz).weekday() == day)]
         if len(candidates) == 1:
