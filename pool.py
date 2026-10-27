@@ -82,6 +82,19 @@ def submit_replacements(store: Store, season: Season, member: str, week: int, se
     return decisions
 
 
+def submit_override(store: Store, season: Season, member: str, week: int, selections: list, now: datetime,
+                    reason: str) -> list:
+    """Organizer ruling: accept picks as if they'd been on the form at the deadline, past the grace window and tip
+    times. Every other rule still applies (cycle, duplicates, open slots). Stored as source "admin" with the reason."""
+    decisions = rules.validate_regular(season, week, store.games_by_id(), selections,
+                                       used_teams(store, season, member, week, include_current=True),
+                                       cutoff=season.deadline(week), slots=open_slots(store, season, member, week))
+    decisions = [d if not d.accepted else rules.Decision(d.game_id, d.team, True, note=f"Override: {reason}")
+                 for d in decisions]
+    store.add_picks(member, week, REGULAR, "admin", decisions, now)
+    return decisions
+
+
 def submit_specials(store: Store, season: Season, member: str, selections: list, now: datetime) -> list:
     """Special-game picks; a new pick for a game replaces the old one until that game tips."""
     games = store.games_by_id()

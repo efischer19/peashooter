@@ -162,15 +162,19 @@ def ingest(season: Season, store: Store, responses: list, week: int, source=None
     return report.ingest_summary_md(season, week, results, missing, late, unknown)
 
 
-def replace(season: Season, store: Store, week: int, name: str, text: str, now: datetime, source=None) -> str:
-    """Record DM replacements for a member's dropped picks (grace window, untipped games only)."""
+def replace(season: Season, store: Store, week: int, name: str, text: str, now: datetime, source=None,
+            override: str = "") -> str:
+    """Record DM replacements for a member's dropped picks (grace window, untipped games only). With `override`
+    (the organizer's reason), games the week's form could have picked count too, even after tip or grace."""
     member = member_for(season, name)
     if member is None:
         raise ValueError(f"{name!r} isn't on the roster")
     refresh(store, season, source, [week])
-    parsed = rules.parse_picks(text, pool.week_games(store, season, week), after=now, tz=season.tz)
-    decisions = pool.submit_replacements(store, season, member, week,
-                                         [(p.game_id, p.team) for p in parsed if p.game_id], now)
+    after = season.deadline(week) if override else now
+    parsed = rules.parse_picks(text, pool.week_games(store, season, week), after=after, tz=season.tz)
+    selections = [(p.game_id, p.team) for p in parsed if p.game_id]
+    decisions = pool.submit_override(store, season, member, week, selections, now, override) if override else \
+        pool.submit_replacements(store, season, member, week, selections, now)
     decisions += [p.rejection() for p in parsed if not p.game_id]
     games = store.games_by_id()
     lines = [f"{'✅' if d.accepted else '❌'} {report.pick_text(season, games.get(d.game_id), d.team)}"
@@ -408,6 +412,8 @@ def main(argv=None) -> int:
     p.add_argument("--member", required=True, help="roster name or Slack ID")
     p.add_argument("picks", help='e.g. "Lakers Fri, Heat vs Knicks"')
     p.add_argument("--at", help="when the DM was sent (ISO, local time); default now")
+    p.add_argument("--override", metavar="REASON", default="",
+                   help="organizer ruling: also allow games that have tipped or a closed grace window (recorded)")
     for name, help_text in (("remaining", "teams each member has left going into a week"),
                             ("picks", "everyone's counted picks and results for a week")):
         sub.add_parser(name, help=help_text).add_argument("--week", type=int, required=True)
@@ -462,7 +468,7 @@ def main(argv=None) -> int:
                 text += "\n(dry run: nothing was stored)\n"
         elif args.command == "replace":
             at = parse_timestamp(args.at, season.tz) if args.at else now
-            text = replace(season, store, args.week, args.member, args.picks, at, source)
+            text = replace(season, store, args.week, args.member, args.picks, at, source, args.override)
         elif args.command == "remaining":
             text = remaining(season, store, args.week)
         elif args.command == "picks":

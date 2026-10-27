@@ -158,3 +158,22 @@ def test_rebuild_tabs_writes_the_plan_and_arranges(monkeypatch):
     assert written == [2, 1, 3, 4, 5, 6] and links[2] == "link2"
     assert arranged == [([2, 1, 3, 4, 5, 6], [])]
     assert status == [(2, ["Alice", "Bob", "Cat"], season.deadline(2).replace(tzinfo=None))]
+
+
+def test_override_accepts_a_ruling_after_tip_and_grace(tmp_path):
+    s = make_season()
+    season, store, responses = setup(tmp_path, [
+        csv_row(at(s, 1, 0, 12), "Bob", "Week 1", [tue_pick(i) for i in range(9)] + ["Warriors"])])
+    admin.ingest(season, store, responses, 1)
+    wed = at(season, 1, 2, 9)  # Tuesday's games have tipped and the grace window has closed
+
+    out = admin.replace(season, store, 1, "Bob", "Warriors tue", wed)
+    assert "❌" in out and pool.open_slots(store, season, "Bob", 1) == 1
+
+    out = admin.replace(season, store, 1, "Bob", "Warriors tue", wed, override="form named the team, game clarified late")
+    assert out.startswith("✅ Warriors (Tue") and out.endswith("Open slots left: 0\n")
+    pick = store.picks(member="Bob", source="admin", accepted=True)[0]
+    assert pick.team == "GSW" and pick.note == "Override: form named the team, game clarified late"
+    # other rules still apply: no slot left, and the Monday game tipped before the form deadline
+    out = admin.replace(season, store, 1, "Bob", "Celtics mon", wed, override="x")
+    assert "✅" not in out
