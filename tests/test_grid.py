@@ -181,9 +181,11 @@ def test_watch_cell_feeds_before_the_game_and_highlights_after():
     assert "DAZN-IND" in google_sheet.watch_cell(report.watch_links(upcoming, "IND"))["userEnteredValue"]["stringValue"]
 
     final = replace(upcoming, status=FINAL, away_score=1, home_score=2)
-    assert report.watch_links(final, "NOP") == [("NBA.com", report.nba_url(final))]
+    assert report.watch_links(final, "NOP") == [("League Pass", report.nba_url(final))]
     video = replace(final, highlights="https://www.youtube.com/watch?v=abc")
     cell = google_sheet.watch_cell(report.watch_links(video, "NOP"))
-    assert cell["userEnteredValue"]["stringValue"] == "▶ Highlights"
-    assert cell["textFormatRuns"][0]["format"]["link"]["uri"] == "https://www.youtube.com/watch?v=abc"
+    assert cell["userEnteredValue"]["stringValue"] == "▶ Highlights · League Pass"
+    runs = cell["textFormatRuns"]
+    assert runs[0]["format"]["link"]["uri"] == "https://www.youtube.com/watch?v=abc"
+    assert runs[2]["format"]["link"]["uri"] == report.nba_url(final)
     assert google_sheet.watch_cell([]) == google_sheet._cell("")  # synthetic test games have no NBA id

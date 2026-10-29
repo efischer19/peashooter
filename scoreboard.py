@@ -139,15 +139,17 @@ def feed_html(name: str, link: str) -> str:
 
 
 def watch_html(g) -> str:
-    """Under the game time: full-game highlights once a final game has them; before that, a TV menu with
-    NBA.com (League Pass) and every national and local feed; a plain NBA.com link when there are no feeds."""
-    links = watch_links(g, nba_label="NBA.com · League Pass")
+    """Under the game time: once final, a replay menu with the full-game highlights (when matched) and the League
+    Pass replay; before that, a TV menu with NBA.com (League Pass) and every national and local feed; a plain
+    NBA.com link when there's nothing else to offer."""
+    links = watch_links(g, nba_label="NBA.com · League Pass", replay_label="NBA.com · League Pass replay")
     if not links:
         return ""
     matchup = f"{escape(g.away)} @ {escape(g.home)}"
     if g.status == FINAL and g.highlights:
-        return (f'<a class="watch" href="{escape(g.highlights)}" target="_blank" rel="noopener" '
-                f'title="Full-game highlights" aria-label="Full-game highlights, {matchup}">{PLAY_ICON}</a>')
+        links = [("Full-game highlights (YouTube)", g.highlights)] + links[1:]
+        return (f'<details class="tv"><summary title="Replays" aria-label="Replays, {matchup}">{PLAY_ICON}'
+                f'</summary><div class="menu">{"".join(feed_html(*x) for x in links)}</div></details>')
     if len(links) == 1:
         return (f'<a class="watch" href="{nba_url(g)}" target="_blank" rel="noopener" title="Watch on NBA.com" '
                 f'aria-label="Watch {matchup} on NBA.com">{TV_ICON}</a>')

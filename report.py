@@ -32,15 +32,15 @@ def nba_url(game: Game) -> str:
     return f"https://www.nba.com/game/{game.away.lower()}-vs-{game.home.lower()}-{game.id}"
 
 
-def watch_links(game: Game, team: str = "", nba_label: str = "NBA.com") -> list:
+def watch_links(game: Game, team: str = "", nba_label: str = "NBA.com", replay_label: str = "League Pass") -> list:
     """[(label, link or "")] for where to watch, shared by the page and the Sheet. Before and during the game:
     NBA.com (League Pass), national feeds, then local feeds (only `team`'s, unprefixed, when given; otherwise
-    both teams', prefixed with the nickname). Once final: the highlights video if matched, else NBA.com.
-    Empty for games without a real NBA game id."""
+    both teams', prefixed with the nickname). Once final: the highlights video if matched, then the League Pass
+    replay on NBA.com. Empty for games without a real NBA game id."""
     if not game.id.isdigit():
         return []
     if game.status == FINAL:
-        return [("▶ Highlights", game.highlights)] if game.highlights else [(nba_label, nba_url(game))]
+        return ([("▶ Highlights", game.highlights)] if game.highlights else []) + [(replay_label, nba_url(game))]
     links = [(nba_label, nba_url(game))] + [(b.name, b.link) for b in game.broadcasts if b.scope == NATIONAL]
     for scope, side in ((AWAY, game.away), (HOME, game.home)):
         if not team or team == side:

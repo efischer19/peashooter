@@ -118,7 +118,9 @@ def test_page_links_highlights_once_final(store, season):
     store.upsert_games([done] + games[1:])
     store.save_highlights({done.id: ("https://www.youtube.com/watch?v=abc", "title")})
     html = admin.site(season, store, at(season, 1, 2, 9))
-    assert 'href="https://www.youtube.com/watch?v=abc"' in html and 'title="Full-game highlights"' in html
+    assert '<summary title="Replays"' in html
+    assert '<a href="https://www.youtube.com/watch?v=abc" target="_blank" rel="noopener">Full-game highlights' in html
+    assert f'<a href="{report.nba_url(done)}" target="_blank" rel="noopener">NBA.com · League Pass replay ↗</a>' in html
     # a final game without a video falls back to its NBA.com page
     store.upsert_games([replace(games[1], status=FINAL, away_score=100, home_score=110)])
     assert f'href="{report.nba_url(games[1])}"' in admin.site(season, store, at(season, 1, 2, 9))
