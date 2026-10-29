@@ -10,6 +10,16 @@ PEAshooter is a self-hosted tool that a league organizer runs for their own NBA 
 ## Public scoreboard (optional)
 If the organizer publishes the scoreboard page, it shows standings, games and picks (only once they lock) under each member's alias from the config, never their name. It has no forms, cookies, analytics or links to the Sheet.
 
+## Pick helper (optional)
+The pick helper page shows games and each member's remaining teams under their alias. By default it has no form links and no login.
+
+If the organizer puts it behind a login (for example Cloudflare Access with Slack sign-in) and switches on submitting:
+- The login service tells the page who is signed in.
+- The page holds the roster's display names, and a short one-way hash of each Slack user ID, to recognise the signed-in member. Slack IDs themselves aren't in the page.
+- Picks go straight from the member's browser to the organizer's Google Form.
+
+The browser remembers the member's last-chosen week and shooter, and what they last sent, on their own device. Nothing else is stored, and there are no analytics.
+
 ## Third-party data PEAshooter reads
 Schedules, scores and broadcaster listings come from stats.nba.com. If configured, PEAshooter also reads a public YouTube playlist page to link full-game highlights. Neither request carries anything about league members.
 

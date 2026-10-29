@@ -91,8 +91,9 @@ def schedule_md(season: Season, week: int, games: list, as_of: date, header: boo
     return "\n".join(lines) + "\n"
 
 
-def announcement_md(season: Season, week: int, games: list, form_url: str, tracker_url: str) -> str:
-    """The Sunday post's main message: heading, deadline and links (the schedule goes in its thread)."""
+def announcement_md(season: Season, week: int, games: list, form_url: str, tracker_url: str, picks_url: str = "") -> str:
+    """The Sunday post's main message: heading, deadline and links (the schedule goes in its thread). With
+    `picks_url` (the pick helper, once it takes submissions), that's the main link and the form is the fallback."""
     start, end = season.week_bounds(week)
     deadline = season.deadline(week)
     in_week = [g for g in games if start <= g.tip < end]
@@ -105,8 +106,12 @@ def announcement_md(season: Season, week: int, games: list, form_url: str, track
     else:
         lines.append(f"Picks due *{deadline:%a %b %-d}, {clock(deadline)} ET* · {season.picks_per_week} picks · "
                      f"{len(in_week)} games")
-    lines += ["", f"👉 <{form_url}|*Make your picks*> · 📊 <{tracker_url}|Tracker>: what you can still pick",
-              "🧵 Full schedule in the thread"]
+    if picks_url and not off:  # the pick helper skips special games, so special weeks stay on the form
+        lines += ["", f"👉 <{picks_url}|*Make your picks*>: sign in with Slack, tap your teams, hit Submit",
+                  f"📝 Or use <{form_url}|the form> · 📊 <{tracker_url}|Tracker>", "🧵 Full schedule in the thread"]
+    else:
+        lines += ["", f"👉 <{form_url}|*Make your picks*> · 📊 <{tracker_url}|Tracker>: what you can still pick",
+                  "🧵 Full schedule in the thread"]
     return "\n".join(lines) + "\n"
 
 
@@ -274,7 +279,8 @@ def _links_cell(links: list) -> dict:
 
 
 def digest_blocks(season: Season, week: int, now: datetime, rows: list, yesterday: list, games: list,
-                  pickers: dict, hidden: set, site_url: str = "", highlights_url: str = "") -> tuple:
+                  pickers: dict, hidden: set, site_url: str = "", highlights_url: str = "", picks_url: str = "",
+                  picks_week: int = 0) -> tuple:
     """Block Kit for the morning post, from the same inputs as digest_md: (main blocks, thread blocks or None).
     Under the standings, stacked: the scoreboard link, yesterday's tally, the highlights playlist link."""
     off = season.off_week_label(week)
@@ -296,6 +302,9 @@ def digest_blocks(season: Season, week: int, now: datetime, rows: list, yesterda
         main.append({"type": "table", "rows": table, "column_settings": [
             {"align": "center"}, {"align": "left"}, {"align": "right"}, {"align": "right"}, {"align": "right"}]})
     notes = [f"<{site_url}|PEAshooter leaderboard ↗>"] if site_url else []
+    if picks_url and picks_week:
+        due = season.deadline(picks_week)
+        notes.append(f"<{picks_url}|Make your Week {picks_week} picks ↗> · due {due:%a} {clock(due)} ET")
     if played:
         notes.append(f"*Yesterday:* {yesterday_tally(played)}")
     if highlights_url:

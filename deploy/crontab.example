@@ -9,8 +9,9 @@ AWS=/opt/homebrew/bin/aws
 SITE_S3=s3://your-bucket/peashooter
 AWS_PROFILE=peashooter
 
-# Sunday 11:00   open the coming week's form, write its availability grid, post the schedule
-0 11 * * 0   cd $PEASHOOTER && $UV run --extra google --extra nba admin.py --post sunday   >> data/cron.log 2>&1
+# Sunday 11:00   open the coming week's form, write its availability grid, post the schedule; then publish the pages,
+#                so the pick helper knows the form is open
+0 11 * * 0   cd $PEASHOOTER && $UV run --extra google --extra nba admin.py --post sunday   >> data/cron.log 2>&1; deploy/publish_site.sh >> data/cron.log 2>&1
 # Monday 17:00   nudge whoever hasn't picked
 0 17 * * 1   cd $PEASHOOTER && $UV run --extra google --extra nba admin.py --post reminder  >> data/cron.log 2>&1
 # Monday 18:45   deadline: close the form, ingest, rebuild the grid, post the summary
@@ -22,5 +23,3 @@ AWS_PROFILE=peashooter
 # Daily 04:20 and Monday 18:50 (just after the lock, so picks show): rebuild and publish the scoreboard and pick helper
 20 4 * * *   cd $PEASHOOTER && deploy/publish_site.sh >> data/cron.log 2>&1
 50 18 * * 1  cd $PEASHOOTER && deploy/publish_site.sh >> data/cron.log 2>&1
-# Sunday 11:05, just after the form opens: publish again, so the pick helper knows the form is open
-5 11 * * 0   cd $PEASHOOTER && deploy/publish_site.sh >> data/cron.log 2>&1

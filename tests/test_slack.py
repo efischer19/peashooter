@@ -98,3 +98,20 @@ def test_announcement_is_short_and_schedule_has_no_header():
     assert schedule.startswith("*Tue Oct 27*")
     xmas = report.announcement_md(season, 9, [], "f", "t")
     assert "Christmas week: no regular picks." in xmas
+
+
+def test_posts_lead_with_the_pick_helper_once_it_takes_submissions(monkeypatch):
+    import report
+    from conftest import week_schedule
+    season = make_season()
+    main = report.announcement_md(season, 1, week_schedule(season, 1), "https://form", "https://tab", "https://x/picks")
+    assert main.splitlines()[3] == "👉 <https://x/picks|*Make your picks*>: sign in with Slack, tap your teams, hit Submit"
+    assert main.splitlines()[4] == "📝 Or use <https://form|the form> · 📊 <https://tab|Tracker>"
+    assert "<f|*Make your picks*>" in report.announcement_md(season, 7, [], "f", "t", "https://x/picks")  # special week
+
+    monkeypatch.setenv("PEASHOOTER_SITE_URL", "https://x")
+    monkeypatch.setenv("PEASHOOTER_PICKER_FORM", "1")
+    monkeypatch.setattr(admin, "google", lambda: (None, None, "sheet"))
+    monkeypatch.setattr(admin, "sheet_responses", lambda sheets, sheet_id, s: [])
+    text = admin.reminder(season, None, 1, datetime(2026, 10, 26, 17, tzinfo=ET))
+    assert text.endswith("Cat\n👉 <https://x/picks|Make your picks>: sign in with Slack and submit in a minute\n")

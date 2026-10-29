@@ -251,7 +251,7 @@ def sunday(season: Season, store: Store, week: int, now: datetime, source=None) 
     from slack_post import Thread
 
     games = pool.week_games(store, season, week)
-    return Thread(report.announcement_md(season, week, games, form["responderUri"], tab),
+    return Thread(report.announcement_md(season, week, games, form["responderUri"], tab, submit_url()),
                   (report.schedule_md(season, week, games, now.date(), header=False),))
 
 
@@ -264,8 +264,9 @@ def reminder(season: Season, store: Store, week: int, now: datetime) -> str:
     waiting = [m.name for m in season.members if m.name not in sent]
     if not waiting:
         return f"🏀 Everyone's picks are in for Week {week}. 🎉\n"
+    link = f"\n👉 <{submit_url()}|Make your picks>: sign in with Slack and submit in a minute" if submit_url() else ""
     return (f"⏰ Week {week} picks lock *{deadline:%a} {report.clock(deadline)} ET*. "
-            f"Still waiting on: {', '.join(sorted(waiting, key=str.casefold))}\n")
+            f"Still waiting on: {', '.join(sorted(waiting, key=str.casefold))}{link}\n")
 
 
 def monday(season: Season, store: Store, week: int, now: datetime, source=None) -> str:
@@ -278,7 +279,9 @@ def monday(season: Season, store: Store, week: int, now: datetime, source=None) 
         set_accepting(forms, os.environ["PEASHOOTER_FORM_ID"], False)
     text = ingest(season, store, sheet_responses(sheets, sheet_id, season), week, source)
     tab = rebuild_tabs(season, store, sheets, sheet_id, week, now)[week]
-    return text + f"\n📊 <{tab}|Tracker>: everyone's picks, filled in as games finish\n"
+    site_url = os.environ.get("PEASHOOTER_SITE_URL", "")
+    board = f" · 🏀 <{site_url}|Scoreboard>" if site_url else ""
+    return text + f"\n📊 <{tab}|Tracker>{board}: everyone's picks, filled in as games finish\n"
 
 
 def tab_plan(season: Season, week: int, existing: list) -> tuple:
@@ -364,7 +367,8 @@ def digest(season: Season, store: Store, now: datetime, source=None):
             rules.standings(season, [p for p in picks if p.game_id in played], games), todays, pickers, hidden)
     main, reply = report.digest_md(*args)
     main_blocks, reply_blocks = report.digest_blocks(*args, site_url=os.environ.get("PEASHOOTER_SITE_URL", ""),
-                                                     highlights_url=highlights.playlist_url())
+                                                     highlights_url=highlights.playlist_url(),
+                                                     picks_url=submit_url(), picks_week=open_form_week(season, now))
     return Thread(main, (reply,) if reply else (), (main_blocks, reply_blocks) if reply else (main_blocks,))
 
 
@@ -389,6 +393,19 @@ def picks_url() -> str:
     """The pick helper's absolute URL, next to the scoreboard at PEASHOOTER_SITE_URL ("" when that isn't set)."""
     site_url = os.environ.get("PEASHOOTER_SITE_URL", "").rstrip("/")
     return f"{site_url}/picks" if site_url else ""
+
+
+def submit_url() -> str:
+    """The pick helper's URL for Slack posts: only once it takes submissions (PEASHOOTER_PICKER_FORM=1)."""
+    return picks_url() if os.environ.get("PEASHOOTER_PICKER_FORM") == "1" else ""
+
+
+def open_form_week(season: Season, now: datetime) -> int:
+    """The regular week the form is open for, while its deadline is ahead (0 otherwise); google_form.py records it."""
+    week = os.environ.get("PEASHOOTER_FORM_WEEK", "")
+    if not week.isdigit() or not season.is_regular(int(week)) or season.deadline(int(week)) <= now:
+        return 0
+    return int(week)
 
 
 def picker(season: Season, store: Store, now: datetime, source=None) -> str:

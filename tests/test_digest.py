@@ -127,3 +127,16 @@ def test_blocks_hide_unlocked_picks(store, season, monkeypatch):
     assert cells(reply[1])[1] == ["8 pm", "BOS @ MIA", "🔒", "–"]
     assert reply[2]["elements"][0]["text"] == "_Week 2 picks lock Mon 7 pm ET and show after that_"
     assert "Full scoreboard" not in str(main)
+
+
+def test_digest_links_the_pick_helper_while_the_form_is_open(store, season, monkeypatch):
+    monkeypatch.setenv("PEASHOOTER_SITE_URL", "https://example.com/peashooter/")
+    monkeypatch.setenv("PEASHOOTER_PICKER_FORM", "1")
+    monkeypatch.setenv("PEASHOOTER_FORM_WEEK", "2")
+    monkeypatch.setattr(admin.highlights, "playlist_url", lambda: "")
+    store.upsert_games(week_schedule(season, 1))
+    notes = lambda now: admin.digest(season, store, now).blocks[0][-1]["elements"][0]["text"]
+    assert "<https://example.com/peashooter/picks|Make your Week 2 picks ↗> · due Mon 7 pm ET" in notes(at(season, 1, 5, 9))
+    assert "Make your" not in notes(at(season, 2, 1, 9))  # week 2's deadline has passed
+    monkeypatch.setenv("PEASHOOTER_FORM_WEEK", "")  # closed
+    assert "Make your" not in notes(at(season, 1, 5, 9))
