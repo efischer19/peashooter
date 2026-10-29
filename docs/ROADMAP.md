@@ -24,18 +24,17 @@ These hold for everything below.
 ## Schedule
 | When | What |
 |---|---|
-| Next session (target: live for week 4, Sun Nov 8) | **Picker, Phase 0** |
+| Now (target: live for week 4, Sun Nov 8) | **Picker, Phases 0 and 1**: the page with copy-text, then Cloudflare Access with Slack sign-in and the prefilled Form button |
 | Late Nov, once the Cup quarterfinals are set | Re-check the Cup knockout dates and game IDs in the feed |
 | Built by Sun Dec 6 (week 8's Form opens) | **Bonus window**, used first for the Cup Final (closes when the Final tips, Dec 11) |
 | By Mon Dec 21 | The Christmas bonus window (the same mechanism, for 5 games) |
-| Late Dec to early Jan | **Picker, Phase 1**: Cloudflare Access with Slack sign-in |
 | Cycle 3 boundary, Jan 18 | **Picker, Phase 2**: submit from the page |
 | Whenever | Phase 3 (PWA) and the later items below |
 
 ## Picker, Phase 0: wire up the pick-helper page (next up)
-`picker.py` builds a static page. You choose a week and a shooter, then tap teams in that week's games. Teams that are already used this cycle, or whose games tip before the deadline, are disabled. The page gives two outputs:
-- unambiguous pick text, one line per pick (`Cavaliers @ Wizards Mon`);
-- a Form link prefilled with that text.
+`picker.py` builds a static page. You choose a week and a shooter, then tap teams in that week's games. Teams that are already used this cycle, or whose games tip before the deadline, are disabled. The page gives unambiguous pick text, one line per pick (`Cavaliers @ Wizards Mon`), to copy into the Form.
+
+**Phase 0 is copy-text only (decided Oct 29).** The page is public until Phase 1 is set up, and the Form works on the honor system, so the Form's link stays off it for now. The prefilled-Form button arrives with Phase 1.
 
 Legality comes from `pool.form_options`, the same rule the Form validates against, so the page can never offer a pick the pool would drop.
 
@@ -45,7 +44,7 @@ Legality comes from `pool.form_options`, the same rule the Form validates agains
 - No CloudFront changes are needed. The default behaviour already serves new keys under the prefix, and the upload credentials can already write anywhere under it.
 
 **Decisions**
-- **Entry IDs go in `.env`.** `google_form.py --status` writes `PEASHOOTER_FORM_URL` (the responder URL), `PEASHOOTER_FORM_WEEK_ENTRY` and `PEASHOOTER_FORM_PICKS_ENTRY`. The picker build reads them and makes no Google calls, so `publish_site.sh` keeps needing only `--extra nba`. When they're unset, the page leaves out the Form button and still offers the text to copy.
+- **Entry IDs go in `.env`.** `google_form.py --status` writes `PEASHOOTER_FORM_URL` (the responder URL), `PEASHOOTER_FORM_WEEK_ENTRY` and `PEASHOOTER_FORM_PICKS_ENTRY`. The picker build reads them and makes no Google calls, so `publish_site.sh` keeps needing only `--extra nba`. When they're unset, the page leaves out the Form button and still offers the text to copy. Phase 0 publishes without them.
 - **The page works out the lock itself.** Each game's tip and the deadline go into the page as ISO times, and the JavaScript disables locked games against the viewer's clock. So the page needs rebuilding only when the data changes: in the existing daily and Monday 18:50 publishes, plus one new Sunday 11:05 run once the Form is set to the new week. No hourly rebuilds are needed.
 - **Weeks offered:** the week of the next deadline, plus the week after it when the schedule has it, for planning.
 - **The prefill link is only offered for the week of the next deadline**, starting on the Sunday it opens. The Form's Week dropdown holds only that week, so a prefilled link for any other week would fail. Other weeks get text only.
@@ -75,16 +74,21 @@ Legality comes from `pool.form_options`, the same rule the Form validates agains
 - **Display:** the grid, page and digest show bonus picks separately from regular picks, with their points. They don't count toward the 30-team cycle rule.
 - **Before building:** check how today's `ingest` and `rules` already treat special weeks (`season.special_for`, `pool.REGULAR`), and reuse that instead of starting over.
 
-## Picker, Phase 1: Cloudflare Access with Slack sign-in
+## Picker, Phase 1: Cloudflare Access with Slack sign-in (started Oct 29)
+Once Access is in front of the page, the build gets the Form entry IDs and the page shows the prefilled-Form button.
+
 - Make `<site>/peashooter/picks*` a Cloudflare Access application. The site is already proxied by Cloudflare, so an Access application on the path works without a subdomain.
 - **Identity provider:** Slack as a generic OIDC provider. Use the scopes `openid email profile` and the callback URL `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`. The policy allows the workspace, or a list of emails. Set a long session, e.g. a month.
 - The page fetches `/cdn-cgi/access/get-identity` to preselect the shooter, which needs Slack IDs on the roster.
 - **The bypass is accepted.** Access can be bypassed through the origin URLs (CloudFront and S3). That's fine, because the page holds nothing private: never put an email-to-alias map in the HTML. Match on a hash, or on the Slack user-ID claim.
+  - With the Form button on the page, a bypass also exposes the Form's link. The S3 website endpoint can be guessed from the bucket name. That's accepted for now: it's the same honor system, and a stranger's submission would show up at the Monday close.
+  - **Optional hardening:** CloudFront sends a secret `Referer` header to the origin, and a bucket-policy Deny on `peashooter/picks*` blocks reads without it. Scoped to that prefix, it doesn't affect the rest of the bucket. Add it only if this ever matters.
+- **Policy:** allow anyone whose `https://slack.com/team_id` claim is the workspace's team ID. That's simpler than an email list and covers any roster change.
 - **Console work (owner):**
   - [ ] Set up the Zero Trust team.
   - [ ] Turn on Sign in with Slack in the Slack app.
   - [ ] Create the Access application and its policy.
-  - [ ] Add the Slack IDs for every member to `season.toml`.
+  - [ ] Add the Slack IDs for every member to `season.toml`. The bot only has `chat:write`, so copy them by hand: profile → ⋯ → Copy member ID.
 - **Test early on one phone:**
   - **Installed iOS PWAs keep their own cookies**, so the login may finish in Safari and not carry back into the app.
   - **The manifest and icons are fetched without the login cookie.** Add an Access Bypass for them, or use `crossorigin="use-credentials"`.
