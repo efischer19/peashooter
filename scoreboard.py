@@ -32,6 +32,7 @@ main{max-width:720px;margin:0 auto;padding:28px 16px 56px}
 h1{font-size:1.7rem;margin:0;letter-spacing:-.01em}
 h1 span{color:var(--accent)}
 .sub{color:var(--muted);margin-top:2px}
+.sub a{color:var(--accent)}
 section{margin-top:32px}
 h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
 table{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
@@ -208,9 +209,11 @@ def standings_html(season: Season, week: int, rows: list, names: dict) -> str:
             f'<th>Wk {week}</th></tr></thead><tbody>{"".join(body)}</tbody></table>')
 
 
-def page_html(season: Season, week: int, now: datetime, rows: list, games: dict, pickers: dict, hidden: set) -> str:
+def page_html(season: Season, week: int, now: datetime, rows: list, games: dict, pickers: dict, hidden: set,
+              picks_url: str = "") -> str:
     """The whole page. `games` is {week: [Game]} with the current week last; `pickers` is {game_id: {team: [member]}}
-    for games whose picks are visible; `hidden` holds the ids of games whose picks aren't locked yet."""
+    for games whose picks are visible; `hidden` holds the ids of games whose picks aren't locked yet. `picks_url`
+    links the pick helper from the header."""
     names, today = aliases(season), now.astimezone(season.tz).date()
     off = season.off_week_label(week)
     cycle = season.cycle_for(week)
@@ -234,7 +237,7 @@ def page_html(season: Season, week: int, now: datetime, rows: list, games: dict,
 <main>
 <header>
 <h1>🏀 <span>PEA</span>shooter</h1>
-<div class="sub">{escape(season.name)} · {sub}</div>
+<div class="sub">{escape(season.name)} · {sub}{f' · <a href="{escape(picks_url)}">Make picks</a>' if picks_url else ""}</div>
 </header>
 <section>
 <h2>Standings</h2>

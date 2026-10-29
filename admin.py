@@ -381,7 +381,25 @@ def site(season: Season, store: Store, now: datetime, source=None) -> str:
     for p in store.picks(weeks=weeks, accepted=True):
         if p.game_id not in hidden:
             pickers.setdefault(p.game_id, {}).setdefault(p.team, []).append(p.member)
-    return scoreboard.page_html(season, week, now, pool.standings(store, season), games, pickers, hidden)
+    return scoreboard.page_html(season, week, now, pool.standings(store, season), games, pickers, hidden,
+                                picks_url=picks_url())
+
+
+def picks_url() -> str:
+    """The pick helper's absolute URL, next to the scoreboard at PEASHOOTER_SITE_URL ("" when that isn't set)."""
+    site_url = os.environ.get("PEASHOOTER_SITE_URL", "").rstrip("/")
+    return f"{site_url}/picks" if site_url else ""
+
+
+def picker(season: Season, store: Store, now: datetime, source=None) -> str:
+    """The pick helper page (HTML): the week being picked and the one after, with each shooter's legal picks.
+    Copy-text only: it links no form until the page sits behind a login."""
+    import picker as page
+
+    weeks = page.picker_weeks(season, now)
+    refresh(store, season, source, weeks)
+    return page.page_html(season, [page.week_data(season, store, w) for w in weeks],
+                          site_url=os.environ.get("PEASHOOTER_SITE_URL", ""))
 
 
 def schedule_md(season: Season, store: Store, weeks: list, now: datetime, out: Optional[Path] = None,
@@ -430,6 +448,8 @@ def main(argv=None) -> int:
     sub.add_parser("digest", help="morning post: standings, yesterday's results, today's games and picks")
     sub.add_parser("site", help="public scoreboard page: games, standings, locked picks (aliases only)").add_argument(
         "--out", type=Path, default=Path("data/site"), help="directory for index.html (default: data/site)")
+    sub.add_parser("picker", help="pick helper page: legal picks per shooter, as text to paste").add_argument(
+        "--out", type=Path, default=Path("data/site"), help="directory for picks.html (default: data/site)")
     sub.add_parser("tabs", help="set up the Sheet's tabs for a week's cycle").add_argument(
         "--week", type=int, help="default: the coming week")
     p.add_argument("--sheet", action="store_true", help="write the 'Week N' tab in the Google Sheet")
@@ -488,6 +508,10 @@ def main(argv=None) -> int:
             args.out.mkdir(parents=True, exist_ok=True)
             (args.out / "index.html").write_text(site(season, store, now, source))
             text = f"Wrote {args.out / 'index.html'}\n"
+        elif args.command == "picker":
+            args.out.mkdir(parents=True, exist_ok=True)
+            (args.out / "picks.html").write_text(picker(season, store, now, source))
+            text = f"Wrote {args.out / 'picks.html'}\n"
         elif args.command == "tabs":
             week = args.week or upcoming_week(season, now)
             refresh(store, season, source, tab_plan(season, week, [])[0])

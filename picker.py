@@ -1,13 +1,16 @@
 """The pick helper page: choose a week and a shooter, tap teams in the week's games, get form-ready picks.
 
-Static HTML with the data inlined; the page itself only does selection. Legality comes from pool.form_options,
-the same rules the form validates against, so the page never offers a pick the pool would drop. Members appear
-by alias (as on the scoreboard), so the prefilled form link fills Week and Picks and leaves Name to the form.
+Static HTML with the data inlined; the page itself only does selection, and works out the lock from the
+deadline against the viewer's clock, so it only needs rebuilding when the data changes. Legality comes from
+pool.form_options, the same rules the form validates against, so the page never offers a pick the pool would drop.
+Members appear by alias (as on the scoreboard), so a prefilled form link fills Week and Picks and leaves Name to
+the form. Without a form URL (the default until the page is behind a login) it offers the text to copy only.
 """
 
 import json
 from datetime import datetime
 from html import escape
+from typing import Optional
 
 import pool
 from report import clock, nickname
@@ -23,12 +26,26 @@ def pick_text(season: Season, game, team: str) -> str:
     return f"{nickname(team)} {where} {nickname(other)} {game.tip.astimezone(season.tz):%a}"
 
 
-def week_data(season: Season, store, week: int, now: datetime) -> dict:
+def next_deadline_week(season: Season, now: datetime) -> Optional[int]:
+    """The first regular week whose deadline hasn't passed."""
+    return next((w for w in range(1, season.weeks + 1) if season.is_regular(w) and season.deadline(w) > now), None)
+
+
+def picker_weeks(season: Season, now: datetime) -> list:
+    """The week being picked, and the regular week after it for planning."""
+    first = next_deadline_week(season, now)
+    if first is None:
+        return []
+    later = next((w for w in range(first + 1, season.weeks + 1) if season.is_regular(w)), None)
+    return [first] + ([later] if later else [])
+
+
+def week_data(season: Season, store, week: int) -> dict:
     """Everything the page needs for one week: games by day, and per shooter what's legal and what's used."""
     names = aliases(season)
     games = pool.week_games(store, season, week)
     cutoff = season.deadline(week)
-    out = {"week": week, "deadline": f"{cutoff:%a %b %-d}, {clock(cutoff)} ET", "locked": now > cutoff,
+    out = {"week": week, "deadline": f"{cutoff:%a %b %-d}, {clock(cutoff)} ET", "deadlineAt": cutoff.isoformat(),
            "games": [], "shooters": {}}
     for g in games:
         if season.special_for(g.tip):
@@ -49,11 +66,13 @@ def week_data(season: Season, store, week: int, now: datetime) -> dict:
     return out
 
 
-def page_html(season: Season, weeks: list, data: list, default: str, form_url: str, entries: dict) -> str:
-    """`entries` maps "week" and "picks" to the form's prefill entry ids (decimal question ids)."""
+def page_html(season: Season, data: list, default: str = "", form_url: str = "", entries: Optional[dict] = None,
+              site_url: str = "") -> str:
+    """`data` is week_data for each week offered. `entries` maps "week" and "picks" to the form's prefill entry ids
+    (decimal question ids). `site_url` is the scoreboard's absolute URL, for the link back."""
     teams = {code: {"nick": nickname(code), "color": COLORS.get(code, "#555")} for code in TEAMS}
     payload = json.dumps({"weeks": data, "teams": teams, "perWeek": season.picks_per_week, "default": default,
-                          "formUrl": form_url, "entries": entries, "cycleWeeks": season.cycle_weeks},
+                          "formUrl": form_url, "entries": entries or {}, "cycleWeeks": season.cycle_weeks},
                          ensure_ascii=False).replace("</", "<\\/")
     return f"""<!doctype html>
 <html lang="en">
@@ -69,7 +88,7 @@ def page_html(season: Season, weeks: list, data: list, default: str, form_url: s
 <main>
 <header>
 <h1>🏀 <span>PEA</span>shooter picks</h1>
-<div class="sub">{escape(season.name)} · <a href="./">Scoreboard</a></div>
+<div class="sub">{escape(season.name)} · <a href="{escape(site_url or './')}">Scoreboard</a></div>
 </header>
 <div class="controls">
 <label>Week <select id="week"></select></label>
@@ -92,6 +111,7 @@ def page_html(season: Season, weeks: list, data: list, default: str, form_url: s
 <textarea id="text" rows="5" readonly aria-label="Your picks, ready to paste into the form"></textarea>
 <div class="actions"><button type="button" id="copy">Copy picks</button>
 <a id="form" class="primary" target="_blank" rel="noopener">Open the form, prefilled ↗</a></div>
+<p class="note" id="paste">Copy your picks, then paste them into the week's form (the link is in Slack).</p>
 </div>
 </aside>
 <script>const DATA = {payload};
@@ -140,11 +160,12 @@ const $ = id => document.getElementById(id);
 const tm = code => `<span class="tm" style="--c:${DATA.teams[code].color}">${code}</span>`;
 let state = {week: null, shooter: null, picks: []};  // picks: [{id, team}]
 
+const locked = w => Date.now() > Date.parse(w.deadlineAt);
 function weekData() { return DATA.weeks.find(w => w.week === state.week); }
 function shooter() { return weekData().shooters[state.shooter]; }
 
 function init() {
-  $("week").innerHTML = DATA.weeks.map(w => `<option value="${w.week}">Week ${w.week}${w.locked ? " (locked)" : ""}</option>`).join("");
+  $("week").innerHTML = DATA.weeks.map(w => `<option value="${w.week}">Week ${w.week}${locked(w) ? " (locked)" : ""}</option>`).join("");
   const names = Object.keys(DATA.weeks[0].shooters);
   $("shooter").innerHTML = names.map(n => `<option>${n}</option>`).join("");
   let saved = {};
@@ -177,7 +198,7 @@ function render() {
   try { localStorage.setItem("peashooter-picker", JSON.stringify({week: state.week, shooter: state.shooter})); } catch (e) {}
   const w = weekData(), s = shooter(), legal = new Set(s.legal);
   const chosen = new Set(state.picks.map(p => p.team)), full = state.picks.length >= DATA.perWeek;
-  $("deadline").textContent = w.locked ? `Week ${w.week} picks locked ${w.deadline}.`
+  $("deadline").textContent = locked(w) ? `Week ${w.week} picks locked ${w.deadline}.`
     : `Picks due ${w.deadline}. Games before then are locked; teams you've used this cycle are greyed out.`;
   $("left").innerHTML = Object.keys(DATA.teams).sort((a, b) => DATA.teams[a].nick.localeCompare(DATA.teams[b].nick))
     .map(t => `<span class="${s.used[t] ? "tm spent" : chosen.has(t) ? "tm chosen" : "tm"}" style="--c:${DATA.teams[t].color}" title="${DATA.teams[t].nick}${s.used[t] ? `: used in week ${s.used[t]}` : ""}">${t}</span>`).join("");
@@ -188,7 +209,7 @@ function render() {
       [g.away, g.home].map(t => {
         const on = state.picks.some(p => p.id === g.id && p.team === t);
         const why = s.used[t] ? `used wk ${s.used[t]}` : g.early ? "before the deadline" : "";
-        const ok = legal.has(`${g.id}|${t}`) && !w.locked && (on || !full || state.picks.some(p => p.id === g.id || p.team === t));
+        const ok = legal.has(`${g.id}|${t}`) && !locked(w) && (on || !full || state.picks.some(p => p.id === g.id || p.team === t));
         const where = t === g.away ? `@ ${g.home}` : `vs ${g.away}`;
         return `<button type="button" class="team${on ? " on" : ""}${chosen.has(t) && !on ? " elsewhere" : ""}" data-id="${g.id}" data-team="${t}" ${ok ? "" : "disabled"} title="${why || g.text[t]}">${tm(t)}<span>${DATA.teams[t].nick}</span><span class="at">${why || where}</span></button>`;
       }).join("")}</div></div>`).join("")}</div></details>`).join("") || `<p class="note">No games this week.</p>`;
@@ -202,6 +223,7 @@ function render() {
   document.querySelectorAll(".chips .who").forEach(c => c.onclick = () => toggle(c.dataset.id, c.dataset.team));
   const text = picks.map(p => games[p.id].text[p.team]).join("\n");
   $("text").value = text;
+  $("text").style.display = picks.length ? "" : "none";
   const link = $("form");
   if (DATA.formUrl && picks.length) {
     const q = new URLSearchParams({usp: "pp_url"});
@@ -210,6 +232,7 @@ function render() {
     link.href = `${DATA.formUrl}?${q}`; link.removeAttribute("aria-disabled");
   } else { link.removeAttribute("href"); link.setAttribute("aria-disabled", "true"); }
   link.style.display = DATA.formUrl ? "" : "none";
+  $("paste").style.display = DATA.formUrl ? "none" : "";
 }
 init();
 """

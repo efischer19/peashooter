@@ -31,7 +31,7 @@ These hold for everything below.
 | Cycle 3 boundary, Jan 18 | **Picker, Phase 2**: submit from the page |
 | Whenever | Phase 3 (PWA) and the later items below |
 
-## Picker, Phase 0: wire up the pick-helper page (next up)
+## Picker, Phase 0: the pick-helper page (built Oct 29)
 `picker.py` builds a static page. You choose a week and a shooter, then tap teams in that week's games. Teams that are already used this cycle, or whose games tip before the deadline, are disabled. The page gives unambiguous pick text, one line per pick (`Cavaliers @ Wizards Mon`), to copy into the Form.
 
 **Phase 0 is copy-text only (decided Oct 29).** The page is public until Phase 1 is set up, and the Form works on the honor system, so the Form's link stays off it for now. The prefilled-Form button arrives with Phase 1.
@@ -45,22 +45,17 @@ Legality comes from `pool.form_options`, the same rule the Form validates agains
 
 **Decisions**
 - **Entry IDs go in `.env`.** `google_form.py --status` writes `PEASHOOTER_FORM_URL` (the responder URL), `PEASHOOTER_FORM_WEEK_ENTRY` and `PEASHOOTER_FORM_PICKS_ENTRY`. The picker build reads them and makes no Google calls, so `publish_site.sh` keeps needing only `--extra nba`. When they're unset, the page leaves out the Form button and still offers the text to copy. Phase 0 publishes without them.
-- **The page works out the lock itself.** Each game's tip and the deadline go into the page as ISO times, and the JavaScript disables locked games against the viewer's clock. So the page needs rebuilding only when the data changes: in the existing daily and Monday 18:50 publishes, plus one new Sunday 11:05 run once the Form is set to the new week. No hourly rebuilds are needed.
+- **The page works out the lock itself.** Each game's tip and the deadline go into the page as ISO times, and the JavaScript disables locked games against the viewer's clock. So the page needs rebuilding only when the data changes, which the existing daily and Monday 18:50 publishes already cover. No new cron jobs are needed.
 - **Weeks offered:** the week of the next deadline, plus the week after it when the schedule has it, for planning.
-- **The prefill link is only offered for the week of the next deadline**, starting on the Sunday it opens. The Form's Week dropdown holds only that week, so a prefilled link for any other week would fail. Other weeks get text only.
+- **The prefill link is only offered for the week of the next deadline**, starting on the Sunday it opens (worked out in the page, from the deadline). The Form's Week dropdown holds only that week, so a prefilled link for any other week would fail. Other weeks get text only.
 - **Name is never prefilled.** The page shows aliases only, so the shooter picks their name in the Form's own dropdown.
 - **Links between the pages:** the scoreboard header gets a "Make picks" link. The picker links back to the scoreboard by its absolute URL (`PEASHOOTER_SITE_URL`), because `./` resolves differently at `/peashooter/picks` than at `/peashooter/picks/`.
 
-**Tasks**
-- [ ] An `admin.py picker` command that writes `data/site/picks.html`.
-- [ ] `google_form.py --status`: print the entry IDs and the responder URL, and record them in `.env`.
-- [ ] `deploy/publish_site.sh`: also build the picker and upload it to `<prefix>/picks` and `<prefix>/picks/index.html`.
-- [ ] Add a Sunday 11:05 publish to `deploy/crontab.example`.
-- [ ] Tests in the style of `test_scoreboard.py`:
-  - the legal set, used teams, skipped special games and the pick-text format;
-  - the entry IDs, and the page with and without a Form URL;
-  - the prefill link offered only for the open week.
-- [ ] **Sun Nov 1:** once the Form opens for week 3, check against the live `viewform` page that the entry IDs appear in it (the Form is closed today, so this couldn't be checked).
+**Done**
+- [x] `admin.py picker` writes `data/site/picks.html`.
+- [x] `deploy/publish_site.sh` also uploads it to `<prefix>/picks` and `<prefix>/picks/index.html`.
+- [x] The scoreboard header links to it.
+- [x] `tests/test_picker.py` covers the pick text, the weeks offered, used teams, skipped special games, aliases only, and no Form link.
 
 ## The bonus window: Cup Final and Christmas
 **Decided:** bonus picks stay open until **each game tips**, for the Cup Final and for Christmas alike. One mechanism covers both.
@@ -76,6 +71,13 @@ Legality comes from `pool.form_options`, the same rule the Form validates agains
 
 ## Picker, Phase 1: Cloudflare Access with Slack sign-in (started Oct 29)
 Once Access is in front of the page, the build gets the Form entry IDs and the page shows the prefilled-Form button.
+
+**Tasks (code)**
+- [ ] `google_form.py --status`: print the entry IDs and the responder URL, and record them in `.env`. The picker build reads them and passes them to `picker.page_html`.
+- [ ] Offer the prefill link only for the next deadline's week, from the Sunday before it.
+- [ ] Preselect the shooter from `/cdn-cgi/access/get-identity`, matching on the Slack user-ID claim, without putting a readable ID map in the page.
+- [ ] Tests: the entry IDs, the page with and without a Form URL, and the prefill link offered only for the open week.
+- [ ] **Sun Nov 1:** once the Form opens for week 3, check against the live `viewform` page that the entry IDs appear in it (the Form is closed today, so this couldn't be checked).
 
 - Make `<site>/peashooter/picks*` a Cloudflare Access application. The site is already proxied by Cloudflare, so an Access application on the path works without a subdomain.
 - **Identity provider:** Slack as a generic OIDC provider. Use the scopes `openid email profile` and the callback URL `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`. The policy allows the workspace, or a list of emails. Set a long session, e.g. a month.
