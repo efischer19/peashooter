@@ -24,11 +24,10 @@ These hold for everything below.
 ## Schedule
 | When | What |
 |---|---|
-| Now (target: live for week 4, Sun Nov 8) | **Picker, Phases 0 and 1**: the page with copy-text, then Cloudflare Access with Slack sign-in and the prefilled Form button |
+| Oct 29 (done) | **Picker, Phases 0–2**: the page, Cloudflare Access with Slack sign-in, and submitting from the page |
 | Late Nov, once the Cup quarterfinals are set | Re-check the Cup knockout dates and game IDs in the feed |
 | Built by Sun Dec 6 (week 8's Form opens) | **Bonus window**, used first for the Cup Final (closes when the Final tips, Dec 11) |
 | By Mon Dec 21 | The Christmas bonus window (the same mechanism, for 5 games) |
-| Cycle 3 boundary, Jan 18 | **Picker, Phase 2**: submit from the page |
 | Whenever | Phase 3 (PWA) and the later items below |
 
 ## Picker, Phase 0: the pick-helper page (built Oct 29)
@@ -69,15 +68,14 @@ Legality comes from `pool.form_options`, the same rule the Form validates agains
 - **Display:** the grid, page and digest show bonus picks separately from regular picks, with their points. They don't count toward the 30-team cycle rule.
 - **Before building:** check how today's `ingest` and `rules` already treat special weeks (`season.special_for`, `pool.REGULAR`), and reuse that instead of starting over.
 
-## Picker, Phase 1: Cloudflare Access with Slack sign-in (started Oct 29)
+## Picker, Phase 1: Cloudflare Access with Slack sign-in (live Oct 29)
 Once Access is in front of the page, the build gets the Form entry IDs and the page shows the prefilled-Form button.
 
-**Tasks (code)**
-- [ ] `google_form.py --status`: print the entry IDs and the responder URL, and record them in `.env`. The picker build reads them and passes them to `picker.page_html`.
-- [ ] Offer the prefill link only for the next deadline's week, from the Sunday before it.
-- [ ] Preselect the shooter from `/cdn-cgi/access/get-identity`, matching on the Slack user-ID claim, without putting a readable ID map in the page.
-- [ ] Tests: the entry IDs, the page with and without a Form URL, and the prefill link offered only for the open week.
-- [ ] **Sun Nov 1:** once the Form opens for week 3, check against the live `viewform` page that the entry IDs appear in it (the Form is closed today, so this couldn't be checked).
+**Done (code)**
+- [x] `google_form.py` records `PEASHOOTER_FORM_URL`, the `PEASHOOTER_FORM_{NAME,WEEK,PICKS}_ENTRY` ids and `PEASHOOTER_FORM_WEEK` (the open week, "" when closed) in `.env` whenever it opens, closes or checks the Form. The entry IDs were checked against the live `viewform` on Oct 29.
+- [x] `PEASHOOTER_PICKER_FORM=1` switches on the Form link and the roster's names in the page. It's off by default, so an unprotected install stays copy-text only.
+- [x] The prefilled link and submit are offered only for the week the Form is open for. A Sunday 11:05 publish tells the page when the Form has opened.
+- [x] The page preselects the signed-in shooter, matching a SHA-256 hash of the Slack user-ID claim from `/cdn-cgi/access/get-identity`, so no Slack IDs appear in the page.
 
 - Make `<site>/peashooter/picks*` a Cloudflare Access application. The site is already proxied by Cloudflare, so an Access application on the path works without a subdomain.
 - **Identity provider:** Slack as a generic OIDC provider. Use the scopes `openid email profile` and the callback URL `https://<team>.cloudflareaccess.com/cdn-cgi/access/callback`. The policy allows the workspace, or a list of emails. Set a long session, e.g. a month.
@@ -95,10 +93,14 @@ Once Access is in front of the page, the build gets the Form entry IDs and the p
   - **Installed iOS PWAs keep their own cookies**, so the login may finish in Safari and not carry back into the app.
   - **The manifest and icons are fetched without the login cookie.** Add an Access Bypass for them, or use `crossorigin="use-credentials"`.
 
-## Picker, Phase 2: submit from the page (switch at Jan 18)
+## Picker, Phase 2: submit from the page (built Oct 29)
 - **Preferred:** a `no-cors` POST from the browser to the Form's `/formResponse` with the `entry.*` fields. It's fully serverless. The page can't read the response, so confirmation comes from the Monday close, or from DMs later.
 - **Upgrade, if spoofing ever matters:** a Cloudflare Worker that verifies `Cf-Access-Jwt-Assertion` and posts to the Form server-side, filling in Name from the verified login. The pool machine stays untouched either way.
-- Keep the plain Form link as a fallback for the first cycle.
+- **Built:** a signed-in shooter, on their own row, gets **Submit picks**, which sends a `no-cors` POST with Name, Week and Picks.
+  - The page remembers what it sent, per week, in the browser. Monday's ingest and summary remain the record.
+  - "Open the form, prefilled" stays alongside as the fallback, with Name filled in too when it's your own row.
+- [ ] **First real test (Oct 29):** the owner submits week 3 from the page; check the row arrives in Form Responses.
+- Later, if wanted: the Slack DM bot sends submission confirmations.
 
 ## Phase 3: PWA
 A manifest, icons and a small service worker on the static site. No Web Push is needed, because Slack carries the reminders.

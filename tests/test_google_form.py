@@ -55,3 +55,29 @@ def test_set_env_value_replaces_or_appends(tmp_path, monkeypatch):
     env.set_env_value("PEASHOOTER_FORM_ID", "new", f)
     env.set_env_value("PEASHOOTER_SHEET_ID", "s1", f)
     assert f.read_text() == "# keep\nPEASHOOTER_FORM_ID=new\nPEASHOOTER_SHEET_ID=s1\n"
+
+
+def form_with(accepting: bool, week: str = "Week 3") -> dict:
+    question = lambda qid, **kind: {"questionItem": {"question": {"questionId": qid, **kind}}}
+    return {"responderUri": "https://docs.google.com/forms/d/e/x/viewform",
+            "publishSettings": {"publishState": {"isPublished": True, "isAcceptingResponses": accepting}},
+            "items": [{"title": "Name", **question("10675eef")},
+                      {"title": "Week", **question("56893364", choiceQuestion={"options": [{"value": week}]})},
+                      {"title": "Picks", **question("013b1270")}]}
+
+
+def test_form_settings_give_decimal_entry_ids_and_the_open_week():
+    settings = google_form.form_settings(form_with(True))
+    assert settings == {"PEASHOOTER_FORM_URL": "https://docs.google.com/forms/d/e/x/viewform",
+                        "PEASHOOTER_FORM_NAME_ENTRY": "275209967", "PEASHOOTER_FORM_WEEK_ENTRY": "1451832164",
+                        "PEASHOOTER_FORM_PICKS_ENTRY": "20648560", "PEASHOOTER_FORM_WEEK": "3"}
+    assert google_form.form_settings(form_with(False))["PEASHOOTER_FORM_WEEK"] == ""
+
+
+def test_record_form_settings_writes_env(tmp_path, monkeypatch):
+    f = tmp_path / ".env"
+    monkeypatch.setattr(google_form, "set_env_value", lambda k, v: env.set_env_value(k, v, f))
+    for key in google_form.form_settings(form_with(True)):
+        monkeypatch.setenv(key, "")
+    google_form.record_form_settings(form_with(True))
+    assert "PEASHOOTER_FORM_WEEK=3\n" in f.read_text() and "PEASHOOTER_FORM_PICKS_ENTRY=20648560" in f.read_text()

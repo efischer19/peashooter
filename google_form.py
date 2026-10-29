@@ -133,7 +133,30 @@ def set_up_week(forms, season: Season, store: Store, week: int, now: datetime) -
 
 def set_accepting(forms, form_id: str, accepting: bool) -> dict:
     forms.forms().setPublishSettings(formId=form_id, body=publish_body(accepting)).execute()
-    return forms.forms().get(formId=form_id).execute()
+    return record_form_settings(forms.forms().get(formId=form_id).execute())
+
+
+def form_settings(form: dict) -> dict:
+    """What the pick helper needs, as .env settings: the responder URL, the prefill entry ids (a question id is hex;
+    its entry id is the same number in decimal), and the week the form is open for ("" while it's closed)."""
+    questions = {i.get("title"): i["questionItem"]["question"] for i in form.get("items", []) if "questionItem" in i}
+    out = {"PEASHOOTER_FORM_URL": form.get("responderUri", "")}
+    for title in (NAME, WEEK, PICKS):
+        if title in questions:
+            out[f"PEASHOOTER_FORM_{title.upper()}_ENTRY"] = str(int(questions[title]["questionId"], 16))
+    accepting = form.get("publishSettings", {}).get("publishState", {}).get("isAcceptingResponses", False)
+    options = questions.get(WEEK, {}).get("choiceQuestion", {}).get("options", [])
+    week = options[0]["value"] if options else ""
+    out["PEASHOOTER_FORM_WEEK"] = week.removeprefix("Week ") if accepting and week.startswith("Week ") else ""
+    return out
+
+
+def record_form_settings(form: dict) -> dict:
+    """Save form_settings to .env, so the pick helper's next build knows them. Returns the form."""
+    for key, value in form_settings(form).items():
+        if os.environ.get(key) != value:
+            set_env_value(key, value)
+    return form
 
 
 def main(argv=None) -> int:
@@ -160,7 +183,7 @@ def main(argv=None) -> int:
             if not form_id:
                 raise ValueError("no PEASHOOTER_FORM_ID yet; run with --week N to create the form")
             form = set_accepting(forms, form_id, args.open) if (args.open or args.close) \
-                else forms.forms().get(formId=form_id).execute()
+                else record_form_settings(forms.forms().get(formId=form_id).execute())
         print("\n".join(status_lines(sheets, season, form)))
     except Exception as e:
         print(f"FAIL: {type(e).__name__}: {e}", file=sys.stderr)

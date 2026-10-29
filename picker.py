@@ -3,10 +3,13 @@
 Static HTML with the data inlined; the page itself only does selection, and works out the lock from the
 deadline against the viewer's clock, so it only needs rebuilding when the data changes. Legality comes from
 pool.form_options, the same rules the form validates against, so the page never offers a pick the pool would drop.
-Members appear by alias (as on the scoreboard), so a prefilled form link fills Week and Picks and leaves Name to
-the form. Without a form URL (the default until the page is behind a login) it offers the text to copy only.
+Members appear by alias (as on the scoreboard). Without a form URL the page only offers the text to copy. With one
+(the page sits behind Cloudflare Access with Slack sign-in), it asks Access who's signed in, matches their Slack
+user id by hash, and lets them submit their own picks straight to the form for the week it's open for, or open
+the form prefilled. The form can't confirm a submission to the page; the Monday close is the record.
 """
 
+import hashlib
 import json
 from datetime import datetime
 from html import escape
@@ -66,14 +69,23 @@ def week_data(season: Season, store, week: int) -> dict:
     return out
 
 
-def page_html(season: Season, data: list, default: str = "", form_url: str = "", entries: Optional[dict] = None,
-              site_url: str = "") -> str:
-    """`data` is week_data for each week offered. `entries` maps "week" and "picks" to the form's prefill entry ids
-    (decimal question ids). `site_url` is the scoreboard's absolute URL, for the link back."""
+def who_hash(slack_id: str) -> str:
+    """How the page recognises a signed-in member without listing Slack ids: a short SHA-256 of the id."""
+    return hashlib.sha256(slack_id.encode()).hexdigest()[:16]
+
+
+def page_html(season: Season, data: list, form_url: str = "", entries: Optional[dict] = None,
+              form_week: Optional[int] = None, site_url: str = "") -> str:
+    """`data` is week_data for each week offered. `entries` maps "name", "week" and "picks" to the form's entry ids
+    (decimal question ids); `form_week` is the week the form is open for (None while it's closed). `site_url` is
+    the scoreboard's absolute URL, for the link back. Roster names go in the page only along with a form URL."""
     teams = {code: {"nick": nickname(code), "color": COLORS.get(code, "#555")} for code in TEAMS}
-    payload = json.dumps({"weeks": data, "teams": teams, "perWeek": season.picks_per_week, "default": default,
-                          "formUrl": form_url, "entries": entries or {}, "cycleWeeks": season.cycle_weeks},
-                         ensure_ascii=False).replace("</", "<\\/")
+    names = aliases(season)
+    roster = {names[m.name]: {"name": m.name, "who": who_hash(m.slack_id) if m.slack_id else ""}
+              for m in season.members} if form_url else {}
+    payload = json.dumps({"weeks": data, "teams": teams, "perWeek": season.picks_per_week, "formUrl": form_url,
+                          "entries": entries or {}, "formWeek": form_week if form_url else None, "roster": roster,
+                          "cycleWeeks": season.cycle_weeks}, ensure_ascii=False).replace("</", "<\\/")
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -109,9 +121,10 @@ def page_html(season: Season, data: list, default: str = "", form_url: str = "",
 <div class="tray-top"><b id="count"></b><button type="button" id="clear">Clear</button></div>
 <div class="chips" id="chips"></div>
 <textarea id="text" rows="5" readonly aria-label="Your picks, ready to paste into the form"></textarea>
-<div class="actions"><button type="button" id="copy">Copy picks</button>
-<a id="form" class="primary" target="_blank" rel="noopener">Open the form, prefilled ↗</a></div>
-<p class="note" id="paste">Copy your picks, then paste them into the week's form (the link is in Slack).</p>
+<div class="actions"><button type="button" id="submit" class="primary">Submit picks</button>
+<button type="button" id="copy">Copy picks</button>
+<a id="form" target="_blank" rel="noopener">Open the form, prefilled ↗</a></div>
+<p class="note" id="status"></p>
 </div>
 </aside>
 <script>const DATA = {payload};
@@ -150,7 +163,9 @@ a{color:var(--accent)}
 textarea{width:100%;font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px;resize:none}
 .actions{display:flex;gap:8px;flex-wrap:wrap}
 button,.actions a{font:inherit;font-size:.9rem;font-weight:600;border-radius:9px;padding:8px 14px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;text-decoration:none}
-.actions a.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.actions .primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.actions button:disabled{opacity:.4;cursor:not-allowed}
+#status{margin:0}
 .actions a[aria-disabled=true]{opacity:.4;pointer-events:none}
 #clear{padding:4px 10px;font-size:.8rem}
 """
@@ -159,10 +174,53 @@ PICKER_JS = r"""
 const $ = id => document.getElementById(id);
 const tm = code => `<span class="tm" style="--c:${DATA.teams[code].color}">${code}</span>`;
 let state = {week: null, shooter: null, picks: []};  // picks: [{id, team}]
+let me = null, sending = false;  // me: the signed-in shooter's alias, from Cloudflare Access
 
 const locked = w => Date.now() > Date.parse(w.deadlineAt);
 function weekData() { return DATA.weeks.find(w => w.week === state.week); }
 function shooter() { return weekData().shooters[state.shooter]; }
+
+function findUserId(node) {  // the Slack user-id claim, wherever Access puts it in the identity
+  if (!node || typeof node !== "object") return null;
+  for (const [k, v] of Object.entries(node)) {
+    if (k.endsWith("user_id") && typeof v === "string") return v;
+    const found = findUserId(v);
+    if (found) return found;
+  }
+  return null;
+}
+
+async function whoAmI() {
+  try {
+    const r = await fetch("/cdn-cgi/access/get-identity", {credentials: "same-origin"});
+    const id = r.ok ? findUserId(await r.json()) : null;
+    if (!id) return null;
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(id)));
+    const who = [...digest].map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
+    return Object.keys(DATA.roster).find(a => DATA.roster[a].who === who) || null;
+  } catch (e) { return null; }
+}
+
+const sentKey = () => `peashooter-sent-${state.week}-${state.shooter}`;
+function sent() { try { return JSON.parse(localStorage.getItem(sentKey()) || "null"); } catch (e) { return null; } }
+
+async function submit() {
+  const w = weekData(), text = $("text").value, n = state.picks.length;
+  if (n < DATA.perWeek && !confirm(`Send only ${n} of ${DATA.perWeek} picks? You can send again before the deadline; the latest one counts.`)) return;
+  const body = new URLSearchParams();
+  body.set(`entry.${DATA.entries.name}`, DATA.roster[me].name);
+  body.set(`entry.${DATA.entries.week}`, `Week ${w.week}`);
+  body.set(`entry.${DATA.entries.picks}`, text);
+  sending = true; render();
+  try {
+    await fetch(DATA.formUrl.replace(/\/viewform.*$/, "/formResponse"), {method: "POST", mode: "no-cors", body});
+    try { localStorage.setItem(sentKey(), JSON.stringify({at: new Date().toISOString(), text})); } catch (e) {}
+    sending = false; render();
+  } catch (e) {
+    sending = false; render();
+    $("status").textContent = "Couldn't send. Try again, or use \u201cOpen the form, prefilled\u201d.";
+  }
+}
 
 function init() {
   $("week").innerHTML = DATA.weeks.map(w => `<option value="${w.week}">Week ${w.week}${locked(w) ? " (locked)" : ""}</option>`).join("");
@@ -171,7 +229,7 @@ function init() {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem("peashooter-picker") || "{}"); } catch (e) {}
   state.week = DATA.weeks.some(w => w.week === saved.week) ? saved.week : DATA.weeks[0].week;
-  state.shooter = names.includes(saved.shooter) ? saved.shooter : (names.includes(DATA.default) ? DATA.default : names[0]);
+  state.shooter = names.includes(saved.shooter) ? saved.shooter : names[0];
   $("week").value = state.week; $("shooter").value = state.shooter;
   $("week").onchange = e => { state.week = +e.target.value; state.picks = []; render(); };
   $("shooter").onchange = e => { state.shooter = e.target.value; state.picks = []; render(); };
@@ -181,7 +239,13 @@ function init() {
     catch (e) { $("text").select(); document.execCommand("copy"); $("copy").textContent = "Copied ✓"; }
     setTimeout(() => $("copy").textContent = "Copy picks", 1500);
   };
+  $("submit").onclick = submit;
   render();
+  if (DATA.formUrl) whoAmI().then(alias => {
+    me = alias;
+    if (me && me !== state.shooter) { state.shooter = me; $("shooter").value = me; state.picks = []; }
+    render();
+  });
 }
 
 function toggle(id, team) {
@@ -224,15 +288,30 @@ function render() {
   const text = picks.map(p => games[p.id].text[p.team]).join("\n");
   $("text").value = text;
   $("text").style.display = picks.length ? "" : "none";
+  // the form takes only the week it's open for; submitting is for your own picks, once Access says who you are
+  const open = Boolean(DATA.formUrl) && w.week === DATA.formWeek && !locked(w);
+  const mine = open && me !== null && state.shooter === me;
   const link = $("form");
-  if (DATA.formUrl && picks.length) {
+  link.style.display = open ? "" : "none";
+  if (open && picks.length) {
     const q = new URLSearchParams({usp: "pp_url"});
+    if (mine) q.set(`entry.${DATA.entries.name}`, DATA.roster[me].name);
     q.set(`entry.${DATA.entries.week}`, `Week ${w.week}`);
     q.set(`entry.${DATA.entries.picks}`, text);
     link.href = `${DATA.formUrl}?${q}`; link.removeAttribute("aria-disabled");
   } else { link.removeAttribute("href"); link.setAttribute("aria-disabled", "true"); }
-  link.style.display = DATA.formUrl ? "" : "none";
-  $("paste").style.display = DATA.formUrl ? "none" : "";
+  const button = $("submit");
+  button.style.display = mine ? "" : "none";
+  button.disabled = sending || !picks.length;
+  button.textContent = sending ? "Sending…" : picks.length && picks.length < DATA.perWeek
+    ? `Submit ${picks.length} of ${DATA.perWeek}` : "Submit picks";
+  const last = mine ? sent() : null;
+  $("status").textContent = sending ? "" : last
+    ? `Sent ${new Date(last.at).toLocaleString([], {weekday: "short", hour: "numeric", minute: "2-digit"})}: ${last.text.split("\n").join(" · ")}. Sending again replaces it; Monday's summary in Slack is the record.`
+    : mine ? "" : open && me ? `You're signed in as ${me}: submitting here is for your own picks.`
+    : open ? "Open the form with these picks filled in, then pick your name."
+    : DATA.formUrl && !locked(w) ? `The form opens for week ${w.week} on the Sunday before. Plan now; send then.`
+    : "Copy your picks, then paste them into the week's form (the link is in Slack).";
 }
 init();
 """

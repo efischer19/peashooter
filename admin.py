@@ -393,13 +393,22 @@ def picks_url() -> str:
 
 def picker(season: Season, store: Store, now: datetime, source=None) -> str:
     """The pick helper page (HTML): the week being picked and the one after, with each shooter's legal picks.
-    Copy-text only: it links no form until the page sits behind a login."""
+    It links the form (prefill, and submitting from the page) only when PEASHOOTER_PICKER_FORM=1, i.e. once the
+    page sits behind a login; the form's URL, entry ids and open week come from .env (google_form.py records them)."""
     import picker as page
 
     weeks = page.picker_weeks(season, now)
     refresh(store, season, source, weeks)
-    return page.page_html(season, [page.week_data(season, store, w) for w in weeks],
-                          site_url=os.environ.get("PEASHOOTER_SITE_URL", ""))
+    env = os.environ.get
+    form = env("PEASHOOTER_FORM_URL", "") if env("PEASHOOTER_PICKER_FORM") == "1" else ""
+    entries = {k: env(f"PEASHOOTER_FORM_{k.upper()}_ENTRY", "") for k in ("name", "week", "picks")}
+    if form and not all(entries.values()):
+        raise ValueError("PEASHOOTER_PICKER_FORM is on but the form's entry ids aren't in .env; "
+                         "run google_form.py --status")
+    week = env("PEASHOOTER_FORM_WEEK", "")
+    return page.page_html(season, [page.week_data(season, store, w) for w in weeks], form_url=form,
+                          entries=entries if form else None, form_week=int(week) if week.isdigit() else None,
+                          site_url=env("PEASHOOTER_SITE_URL", ""))
 
 
 def schedule_md(season: Season, store: Store, weeks: list, now: datetime, out: Optional[Path] = None,
