@@ -11,7 +11,7 @@ All rules and the calendar live in one config file; nothing league-specific is i
 
 ## Status
 
-In use for the 2026-27 season. Working: the rules engine, schedule and score sync, the weekly Google Form and Sheet tracker, Slack posts (a weekly cycle plus a daily digest), and the public scoreboard page, all on cron. Not built yet: a Slack bot that reads DMs for pick fixes (they go through the organizer's `admin.py replace` for now).
+In use for the 2026-27 season. Working: the rules engine, schedule and score sync, the weekly Google Form and Sheet tracker, Slack posts (a weekly cycle plus a daily digest), and the public scoreboard page, all on cron. Not built yet: a Slack bot that reads DMs for pick fixes (they go through the organizer's `admin.py replace` for now). What's next (the pick-helper page, bonus-game windows) is in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Setup
 

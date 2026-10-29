@@ -11,3 +11,6 @@ token.json
 .venv/
 __pycache__/
 .pytest_cache/
+
+# Private planning notes, ops details and history (see notes/README.md)
+notes/
