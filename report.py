@@ -237,7 +237,17 @@ def digest_md(season: Season, week: int, now: datetime, rows: list, yesterday: l
         lines += ["", f"*Yesterday*: {yesterday_tally(played)}"]
     if not games:
         return "\n".join(lines + ["", "_No games today._"]) + "\n", None
+    return "\n".join(lines) + "\n", games_md(season, week, games, pickers, hidden)
 
+
+def picked_team(season: Season, game: Game, team: str) -> str:
+    """A picked team's nickname, marked ✅/❌ once the game is final (➖ if void); unmarked while pending."""
+    mark = pick_result(season, game, team)
+    return nickname(team) + ("" if mark == PENDING else f" {mark}")
+
+
+def games_md(season: Season, week: int, games: list, pickers: dict, hidden: set) -> str:
+    """The digest thread as text: the day's games with who picked what, marked ✅/❌ once final."""
     out = [f"*Today: {len(games)} game{'s' if len(games) != 1 else ''}* (times ET)"]
     notes = []
     for g in sorted(games, key=lambda g: g.tip):
@@ -251,12 +261,12 @@ def digest_md(season: Season, week: int, now: datetime, rows: list, yesterday: l
             notes += [note] if note not in notes else []
         else:
             picked = pickers.get(g.id, {})
-            line += ": " + (" · ".join(f"{nickname(t)} ({', '.join(picked[t])})" for t in g.teams if t in picked)
-                            or "no picks")
+            line += ": " + (" · ".join(f"{picked_team(season, g, t)} ({', '.join(picked[t])})"
+                                       for t in g.teams if t in picked) or "no picks")
         out.append(line)
     if notes:
         out += ["", "_" + " · ".join(notes) + "_"]
-    return "\n".join(lines) + "\n", "\n".join(out) + "\n"
+    return "\n".join(out) + "\n"
 
 
 def _cell(text: str, bold: bool = False) -> dict:
@@ -314,7 +324,11 @@ def digest_blocks(season: Season, week: int, now: datetime, rows: list, yesterda
     if not games:
         main.append({"type": "context", "elements": [{"type": "mrkdwn", "text": "_No games today._"}]})
         return main, None
+    return main, games_blocks(season, week, games, pickers, hidden)
 
+
+def games_blocks(season: Season, week: int, games: list, pickers: dict, hidden: set) -> list:
+    """Block Kit for the digest thread, from the same inputs as games_md."""
     table, footnotes = [[_cell(h, bold=True) for h in ("ET", "Game", "Picks", "Watch")]], []
     for g in sorted(games, key=lambda g: g.tip):
         special = season.special_for(g.tip)
@@ -326,7 +340,8 @@ def digest_blocks(season: Season, week: int, now: datetime, rows: list, yesterda
             picks = "🔒"
         else:
             picked = pickers.get(g.id, {})
-            picks = " · ".join(f"{nickname(t)} — {', '.join(picked[t])}" for t in g.teams if t in picked) or "–"
+            picks = " · ".join(f"{picked_team(season, g, t)} — {', '.join(picked[t])}"
+                               for t in g.teams if t in picked) or "–"
         table.append([_cell(clock(g.tip.astimezone(season.tz))), _cell(matchup, bold=True), _cell(picks),
                       _links_cell(watch_links(g))])
     reply = [{"type": "section", "text": {"type": "mrkdwn",
@@ -336,4 +351,4 @@ def digest_blocks(season: Season, week: int, now: datetime, rows: list, yesterda
                  {"align": "left", "is_wrapped": True}]}]
     if footnotes:
         reply.append({"type": "context", "elements": [{"type": "mrkdwn", "text": "_" + " · ".join(footnotes) + "_"}]})
-    return main, reply
+    return reply

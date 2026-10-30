@@ -9,6 +9,7 @@ import os
 import urllib.request
 
 API = "https://slack.com/api/chat.postMessage"
+UPDATE_API = "https://slack.com/api/chat.update"
 MAX_CHARS = 3500  # Slack truncates long messages; split on blank lines below this
 
 
@@ -72,13 +73,27 @@ def post(text: str, channel: str = "", token: str = "", thread_ts: str = "", blo
             message["blocks"] = blocks
         if thread_ts:
             message["thread_ts"] = thread_ts
-        body = json.dumps(message)
-        request = urllib.request.Request(API, data=body.encode(), headers={
-            "Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"})
-        with urllib.request.urlopen(request, timeout=30) as response:
-            reply = json.load(response)
-        if not reply.get("ok"):
-            details = "; ".join(reply.get("response_metadata", {}).get("messages", []))
-            raise SlackError(f"chat.postMessage failed: {reply.get('error')}" + (f" ({details})" if details else ""))
-        stamps.append(reply["ts"])
+        stamps.append(_call(API, message, token)["ts"])
     return stamps
+
+
+def update(channel: str, ts: str, text: str, blocks: list = None, token: str = "") -> None:
+    """Replace a message the bot posted (chat.update needs only chat:write). `text` is the fallback with blocks."""
+    token = token or os.environ.get("SLACK_BOT_TOKEN", "")
+    if not token:
+        raise SlackError("set SLACK_BOT_TOKEN in .env")
+    message = {"channel": channel, "ts": ts, "text": text}
+    if blocks:
+        message["blocks"] = blocks
+    _call(UPDATE_API, message, token)
+
+
+def _call(url: str, message: dict, token: str) -> dict:
+    request = urllib.request.Request(url, data=json.dumps(message).encode(), headers={
+        "Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        reply = json.load(response)
+    if not reply.get("ok"):
+        details = "; ".join(reply.get("response_metadata", {}).get("messages", []))
+        raise SlackError(f"{url.rsplit('/', 1)[-1]} failed: {reply.get('error')}" + (f" ({details})" if details else ""))
+    return reply

@@ -39,6 +39,12 @@ CREATE TABLE IF NOT EXISTS forms (
     member TEXT NOT NULL, week INTEGER NOT NULL, form_id TEXT NOT NULL, url TEXT NOT NULL,
     PRIMARY KEY (member, week)
 );
+CREATE TABLE IF NOT EXISTS posts (
+    kind TEXT NOT NULL, day TEXT NOT NULL,  -- e.g. digest, 2026-10-29 (local date)
+    channel TEXT NOT NULL, ts TEXT NOT NULL, reply_ts TEXT NOT NULL DEFAULT '',
+    reply_hash TEXT NOT NULL DEFAULT '',    -- of the thread reply as last sent, to skip edits that change nothing
+    PRIMARY KEY (kind, day)
+);
 """
 
 
@@ -157,3 +163,13 @@ class Store:
     def forms(self, week: int) -> dict:
         return {r["member"]: {"form_id": r["form_id"], "url": r["url"]}
                 for r in self.db.execute("SELECT * FROM forms WHERE week = ?", (week,))}
+
+    # Slack posts we may edit later
+    def save_post(self, kind: str, day: str, channel: str, ts: str, reply_ts: str = "", reply_hash: str = "") -> None:
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO posts VALUES (?, ?, ?, ?, ?, ?)",
+                            (kind, day, channel, ts, reply_ts, reply_hash))
+
+    def post(self, kind: str, day: str) -> Optional[dict]:
+        row = self.db.execute("SELECT * FROM posts WHERE kind = ? AND day = ?", (kind, day)).fetchone()
+        return dict(row) if row else None

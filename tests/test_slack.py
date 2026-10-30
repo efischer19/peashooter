@@ -115,3 +115,16 @@ def test_posts_lead_with_the_pick_helper_once_it_takes_submissions(monkeypatch):
     monkeypatch.setattr(admin, "sheet_responses", lambda sheets, sheet_id, s: [])
     text = admin.reminder(season, None, 1, datetime(2026, 10, 26, 17, tzinfo=ET))
     assert text.endswith("Cat\n👉 <https://x/picks|Make your picks>: sign in with Slack and submit in a minute\n")
+
+
+def test_update_edits_a_message(monkeypatch):
+    sent = []
+    monkeypatch.setattr(slack_post.urllib.request, "urlopen", lambda r, timeout: sent.append(
+        (r.full_url, json.loads(r.data))) or io.BytesIO(b'{"ok": true, "ts": "1.2"}'))
+    slack_post.update("C1", "1.2", "fallback", [{"type": "divider"}], token="t")
+    assert sent == [("https://slack.com/api/chat.update",
+                     {"channel": "C1", "ts": "1.2", "text": "fallback", "blocks": [{"type": "divider"}]})]
+    monkeypatch.setattr(slack_post.urllib.request, "urlopen",
+                        lambda r, timeout: io.BytesIO(b'{"ok": false, "error": "cant_update_message"}'))
+    with pytest.raises(slack_post.SlackError, match="chat.update failed: cant_update_message"):
+        slack_post.update("C1", "1.2", "x", token="t")

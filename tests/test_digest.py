@@ -140,3 +140,31 @@ def test_digest_links_the_pick_helper_while_the_form_is_open(store, season, monk
     assert "Make your" not in notes(at(season, 2, 1, 9))  # week 2's deadline has passed
     monkeypatch.setenv("PEASHOOTER_FORM_WEEK", "")  # closed
     assert "Make your" not in notes(at(season, 1, 5, 9))
+
+
+def test_results_mark_yesterdays_thread_once(store, season, monkeypatch):
+    monkeypatch.setenv("SLACK_CHANNEL_ID", "C1")
+    games = week_schedule(season, 1)
+    store.upsert_games(games)
+    tue = [g for g in games if g.id.startswith("w1d1")]
+    pick(store, season, "Alice", 1, tue[0].id, tue[0].home)
+    pick(store, season, "Bob", 1, tue[0].id, tue[0].away)
+    post = admin.digest(season, store, at(season, 1, 1, 4, 15))
+    assert "✅" not in post.replies[0] and "❌" not in post.replies[0]  # nothing final yet
+    admin.save_digest(season, store, at(season, 1, 1, 4, 15), post, ["main.1", "reply.1"])
+
+    edits = []
+    monkeypatch.setattr("slack_post.update", lambda channel, ts, text, blocks=None: edits.append((channel, ts, text, blocks)))
+    day = at(season, 1, 1).date()
+    wed = at(season, 1, 2, 4, 15)
+    assert admin.results(season, store, wed, day, post=True) == "Results: the Tue Oct 27 digest thread is up to date\n"
+    store.upsert_games(finish(tue))  # home teams win
+    assert admin.results(season, store, wed, day, post=True) == "Results: marked the Tue Oct 27 digest thread\n"
+    channel, ts, text, blocks = edits[0]
+    assert (channel, ts) == ("C1", "reply.1")
+    assert f"{name(tue[0].away)} ❌ (Bob) · {name(tue[0].home)} ✅ (Alice)" in text
+    assert cells(blocks[1])[1][2] == f"{name(tue[0].away)} ❌ — Bob · {name(tue[0].home)} ✅ — Alice"
+    assert admin.results(season, store, wed, day, post=True).endswith("is up to date\n") and len(edits) == 1
+    assert admin.results(season, store, wed, day) == text  # without --post: just the text
+    assert admin.results(season, store, wed, at(season, 1, 3).date(), post=True) == \
+        "Results: no saved digest thread for Thu Oct 29\n"

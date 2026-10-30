@@ -6,6 +6,7 @@
     uv run --extra google --extra nba admin.py [--post] monday     # deadline: close, ingest, grid, summary
     uv run --extra google --extra nba admin.py daily               # sync scores, rebuild grids
     uv run --extra nba admin.py [--post] digest                    # morning: standings + today's games
+    uv run --extra nba admin.py [--post] results [--day 2026-10-29]  # mark a digest's thread with ✅/❌
     uv run --extra nba admin.py site [--out data/site]             # public scoreboard page (index.html)
     uv run --extra google --extra nba admin.py ingest --week 1 [--dry-run]   # reads the Sheet
     uv run --extra nba admin.py ingest responses.csv --week 1               # or a CSV export
@@ -20,11 +21,13 @@ Commands that need games sync the relevant weeks from the schedule source first 
 
 import argparse
 import csv
+import hashlib
+import json
 import os
 import re
 import sys
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -347,6 +350,18 @@ def picks_visible(season: Season, game, now: datetime) -> bool:
     return week is not None and now > season.deadline(week)
 
 
+def day_games(season: Season, store: Store, start: datetime, now: datetime, picks: list) -> tuple:
+    """(the games tipping on the day from `start`, {game_id: {team: [members]}} for those whose picks show by `now`,
+    the ids of those whose picks don't yet)."""
+    games = store.games(start, start + timedelta(days=1))
+    hidden = {g.id for g in games if not picks_visible(season, g, now)}
+    shown, pickers = {g.id for g in games} - hidden, {}
+    for p in sorted(picks, key=lambda p: p.member.casefold()):
+        if p.game_id in shown:
+            pickers.setdefault(p.game_id, {}).setdefault(p.team, []).append(p.member)
+    return games, pickers, hidden
+
+
 def digest(season: Season, store: Store, now: datetime, source=None):
     """Morning post: standings with yesterday's results, then today's games and who picked what (in the thread)."""
     from slack_post import Thread
@@ -357,12 +372,7 @@ def digest(season: Season, store: Store, now: datetime, source=None):
     refresh(store, season, source, sorted({w for w in (season.week_for(yesterday), week) if w}))
     games, picks = store.games_by_id(), store.picks(accepted=True)
     played = {g.id for g in store.games(yesterday, today)}
-    todays = store.games(today, today + timedelta(days=1))
-    hidden = {g.id for g in todays if not picks_visible(season, g, now)}
-    shown, pickers = {g.id for g in todays} - hidden, {}
-    for p in sorted(picks, key=lambda p: p.member.casefold()):
-        if p.game_id in shown:
-            pickers.setdefault(p.game_id, {}).setdefault(p.team, []).append(p.member)
+    todays, pickers, hidden = day_games(season, store, today, now, picks)
     args = (season, week, now, pool.standings(store, season),
             rules.standings(season, [p for p in picks if p.game_id in played], games), todays, pickers, hidden)
     main, reply = report.digest_md(*args)
@@ -370,6 +380,42 @@ def digest(season: Season, store: Store, now: datetime, source=None):
                                                      highlights_url=highlights.playlist_url(),
                                                      picks_url=submit_url(), picks_week=open_form_week(season, now))
     return Thread(main, (reply,) if reply else (), (main_blocks, reply_blocks) if reply else (main_blocks,))
+
+
+def blocks_hash(blocks) -> str:
+    return hashlib.sha256(json.dumps(blocks, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def save_digest(season: Season, store: Store, now: datetime, post, stamps: list) -> None:
+    """Remember where a digest went, so the next morning's run can mark its thread with results."""
+    reply_ts = stamps[1] if len(stamps) > 1 else ""
+    store.save_post("digest", now.astimezone(season.tz).date().isoformat(), os.environ.get("SLACK_CHANNEL_ID", ""),
+                    stamps[0], reply_ts, blocks_hash(post.blocks[1]) if reply_ts else "")
+
+
+def results(season: Season, store: Store, now: datetime, day: date, source=None, post: bool = False) -> str:
+    """A day's digest thread re-rendered with ✅/❌ for its final games. With `post`, edit that thread reply in
+    Slack, unless nothing changed since it was last sent; without, just print it."""
+    from slack_post import update
+
+    start = datetime.combine(day, time(0), season.tz)
+    week = current_week(season, start)
+    refresh(store, season, source, [week])
+    games, pickers, hidden = day_games(season, store, start, now, store.picks(accepted=True))
+    if not games:
+        return f"Results: no games on {day:%a %b %-d}\n"
+    text, blocks = report.games_md(season, week, games, pickers, hidden), report.games_blocks(
+        season, week, games, pickers, hidden)
+    if not post:
+        return text
+    saved = store.post("digest", day.isoformat())
+    if not saved or not saved["reply_ts"]:
+        return f"Results: no saved digest thread for {day:%a %b %-d}\n"
+    if blocks_hash(blocks) == saved["reply_hash"]:
+        return f"Results: the {day:%a %b %-d} digest thread is up to date\n"
+    update(saved["channel"], saved["reply_ts"], text, blocks)
+    store.save_post("digest", day.isoformat(), saved["channel"], saved["ts"], saved["reply_ts"], blocks_hash(blocks))
+    return f"Results: marked the {day:%a %b %-d} digest thread\n"
 
 
 def site(season: Season, store: Store, now: datetime, source=None) -> str:
@@ -471,7 +517,13 @@ def main(argv=None) -> int:
         sub.add_parser(name, help=help_text).add_argument("--week", type=int, help="default: the coming week"
                                                           if name != "monday" else "default: the current week")
     sub.add_parser("daily", help="sync scores and rebuild the cycle's tabs (no post)")
-    sub.add_parser("digest", help="morning post: standings, yesterday's results, today's games and picks")
+    sub.add_parser("digest", help="morning post: standings, yesterday's results, today's games and picks; "
+                                  "with --post, first marks yesterday's thread with ✅/❌")
+    p = sub.add_parser("results", help="a digest's thread with ✅/❌ marks; with --post, edit it in Slack")
+    p.add_argument("--day", type=date.fromisoformat, help="the digest's date (default: yesterday)")
+    p.add_argument("--channel", help="with --ts and --reply-ts: record a digest posted before they were saved")
+    p.add_argument("--ts", help="the digest's main message ts (from its link: p1793261704092389 → 1793261704.092389)")
+    p.add_argument("--reply-ts", help="its thread reply's ts")
     sub.add_parser("site", help="public scoreboard page: games, standings, locked picks (aliases only)").add_argument(
         "--out", type=Path, default=Path("data/site"), help="directory for index.html (default: data/site)")
     sub.add_parser("picker", help="pick helper page: legal picks per shooter, as text to paste").add_argument(
@@ -530,6 +582,18 @@ def main(argv=None) -> int:
             text = daily(season, store, now, source)
         elif args.command == "digest":
             text = digest(season, store, now, source)
+            if args.post:  # before today's goes up; a failure here mustn't stop it
+                try:
+                    print(results(season, store, now, now.date() - timedelta(days=1), post=True), end="")
+                except Exception as e:
+                    print(f"Results: skipped ({type(e).__name__}: {e})")
+        elif args.command == "results":
+            day = args.day or now.date() - timedelta(days=1)
+            if args.ts:
+                if not (args.channel and args.reply_ts):
+                    raise ValueError("--ts needs --channel and --reply-ts")
+                store.save_post("digest", day.isoformat(), args.channel, args.ts, args.reply_ts)
+            text = results(season, store, now, day, source, args.post)
         elif args.command == "site":
             args.out.mkdir(parents=True, exist_ok=True)
             (args.out / "index.html").write_text(site(season, store, now, source))
@@ -558,9 +622,11 @@ def main(argv=None) -> int:
         else:
             text = standings(season, store, now, source)
         print(text, end="")
-        if args.post:
+        if args.post and args.command != "results":  # results edits its thread itself
             from slack_post import post_thread
-            post_thread(text)
+            stamps = post_thread(text)
+            if args.command == "digest":
+                save_digest(season, store, now, text, stamps)
     except Exception as e:
         print(f"FAIL: {type(e).__name__}: {e}", file=sys.stderr)
         return 1

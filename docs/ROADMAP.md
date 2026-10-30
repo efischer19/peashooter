@@ -1,6 +1,6 @@
 # PEAshooter roadmap
 
-*Updated Oct 29, 2026 (week 2 of the 2026-27 season). The setup and commands are in the [README](../README.md).*
+*Updated Oct 30, 2026 (week 2 of the 2026-27 season). The setup and commands are in the [README](../README.md).*
 
 ## Where things stand
 - **Live and cron-driven** since week 1:
@@ -25,6 +25,7 @@ These hold for everything below.
 | When | What |
 |---|---|
 | Oct 29 (done) | **Picker, Phases 0–2**: the page, Cloudflare Access with Slack sign-in, and submitting from the page |
+| Oct 30 (done) | **Results on yesterday's thread** (below) |
 | Late Nov, once the Cup quarterfinals are set | Re-check the Cup knockout dates and game IDs in the feed |
 | Built by Sun Dec 6 (week 8's Form opens) | **Bonus window**, used first for the Cup Final (closes when the Final tips, Dec 11) |
 | By Mon Dec 21 | The Christmas bonus window (the same mechanism, for 5 games) |
@@ -102,11 +103,17 @@ Once Access is in front of the page, the build gets the Form entry IDs and the p
 - [ ] **First real test (Oct 29):** the owner submits week 3 from the page; check the row arrives in Form Responses.
 - Later, if wanted: the Slack DM bot sends submission confirmations.
 
+## Results on yesterday's thread (built Oct 30)
+Each morning, `digest --post` edits yesterday's digest thread reply before posting today's, marking each picked team ✅ or ❌ (➖ if void). It's a daily thing, not live scores.
+- **Decided Oct 30:** only the thread reply changes, with emoji and no scores. The main message, its morning standings included, stays as posted, with no note.
+- The channel and `ts` of each digest are saved in a `posts` table, and `chat.update` needs only `chat:write`. A hash of the last sent reply skips edits that change nothing.
+- Re-rendering also reveals picks that were still 🔒 that morning (Monday's games, before the lock), and switches the watch links to the highlights and replay.
+- `admin.py [--post] results [--day]` does it by hand. `--channel/--ts/--reply-ts` records a digest posted before the `ts` were saved (Oct 29's was backfilled this way).
+
 ## Phase 3: PWA
 A manifest, icons and a small service worker on the static site. No Web Push is needed, because Slack carries the reminders.
 
 ## Later
-- **Results on yesterday's thread:** once yesterday's games finish, edit that digest thread reply to add ✅/❌ marks. Needs the channel and `ts` of each post saved (a `posts` table), then `chat.update`, rendering the lines with `report.pick_result`. It could run in `daily` or just before the next digest.
 - **Slack DM bot** (Socket Mode, outbound only): pick fixes and submission confirmations by DM, so fixes don't go through the organizer. Needs Slack IDs on the roster.
 - **Read-only OpenClaw sidekick:** questions and banter ("what teams do I have left?"), with no write access to anything.
 - **hoopstat-haus as the data source:** swap nba_api out once hoopstat-haus publishes upcoming schedules, not just completed games.

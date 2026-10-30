@@ -50,6 +50,7 @@ uv run --extra nba admin.py replace --week 3 --member "Bob" "Lakers Fri"   # DM 
 uv run --extra nba admin.py picks --week 3                  # pick sheet with results
 uv run --extra nba admin.py standings
 uv run --extra nba admin.py digest                           # standings + today's games (what cron posts daily)
+uv run --extra nba admin.py results                          # yesterday's digest thread with ✅/❌ (--post edits it)
 uv run admin.py remaining --week 4                          # teams left going into next week
 ```
 
@@ -88,7 +89,7 @@ Copy the two JSON files to wherever the bot runs; the token refreshes itself.
 
 - Sunday 11:00 `sunday`: open the form for the coming week, write its availability grid, post the schedule; then publish the pages, so the pick helper knows the form is open.
 - Monday 17:00 `reminder`, then 18:45 `monday`: close the form, ingest, rebuild the grid, post the summary.
-- Daily 4:00 `daily`: sync scores and highlights, rebuild the grids. 4:15 `digest`: standings with each member's points from yesterday, then today's games and who picked what in its thread. 4:20 (and Monday 18:50, right after the lock): publish the scoreboard and the pick helper.
+- Daily 4:00 `daily`: sync scores and highlights, rebuild the grids. 4:15 `digest`: standings with each member's points from yesterday, then today's games and who picked what in its thread. Before posting, it edits yesterday's thread to mark each pick ✅ or ❌ (only the thread reply; the morning's standings stay as they were). 4:20 (and Monday 18:50, right after the lock): publish the scoreboard and the pick helper.
 
 Picks in the digest and on the page follow the grid's rules: regular picks appear once the week locks, and special-game picks once that game tips. Run everything from one machine, since the local database is part of the record.
 
