@@ -104,7 +104,7 @@ Each game card has a watch link under its time:
 
 ## Pick helper page (optional)
 
-`admin.py picker` writes `data/site/picks.html`, and `deploy/publish_site.sh` uploads it next to the scoreboard at `<prefix>/picks`. It offers the week of the next deadline and the week after, for planning. You choose a shooter (by alias) and tap teams; teams used this cycle and games before the deadline are disabled, by the same rules the form validates against. It produces pick text the parser can't misread (`Cavaliers @ Wizards Mon`).
+`admin.py picker` writes `data/site/picks.html`, and `deploy/publish_site.sh` uploads it next to the scoreboard at `<prefix>/picks`. It offers the week of the next deadline and the week after, for planning. You choose a shooter (by alias) and tap teams; teams used this cycle and games before the deadline are disabled, by the same rules the form validates against. It produces pick text the parser can't misread (`Cavaliers @ Wizards Mon`). `admin.py picker --text-only` writes `pick-text.html`, which `publish_site.sh` uploads to `<prefix>/pick-text`: the same page with copy text only, never the form, whatever the switch below says. It sits outside the sign-in, for shooters who can't sign in with Slack, and nothing links to it; share its link directly.
 
 On its own the page is copy-text only and safe to leave public. To let members submit from it:
 

@@ -454,16 +454,17 @@ def open_form_week(season: Season, now: datetime) -> int:
     return int(week)
 
 
-def picker(season: Season, store: Store, now: datetime, source=None) -> str:
+def picker(season: Season, store: Store, now: datetime, source=None, text_only: bool = False) -> str:
     """The pick helper page (HTML): the week being picked and the one after, with each shooter's legal picks.
     It links the form (prefill, and submitting from the page) only when PEASHOOTER_PICKER_FORM=1, i.e. once the
-    page sits behind a login; the form's URL, entry ids and open week come from .env (google_form.py records them)."""
+    page sits behind a login; the form's URL, entry ids and open week come from .env (google_form.py records them).
+    `text_only` leaves the form out regardless, for the public copy-text page (for shooters who can't sign in)."""
     import picker as page
 
     weeks = page.picker_weeks(season, now)
     refresh(store, season, source, weeks)
     env = os.environ.get
-    form = env("PEASHOOTER_FORM_URL", "") if env("PEASHOOTER_PICKER_FORM") == "1" else ""
+    form = env("PEASHOOTER_FORM_URL", "") if env("PEASHOOTER_PICKER_FORM") == "1" and not text_only else ""
     entries = {k: env(f"PEASHOOTER_FORM_{k.upper()}_ENTRY", "") for k in ("name", "week", "picks")}
     if form and not all(entries.values()):
         raise ValueError("PEASHOOTER_PICKER_FORM is on but the form's entry ids aren't in .env; "
@@ -526,8 +527,10 @@ def main(argv=None) -> int:
     p.add_argument("--reply-ts", help="its thread reply's ts")
     sub.add_parser("site", help="public scoreboard page: games, standings, locked picks (aliases only)").add_argument(
         "--out", type=Path, default=Path("data/site"), help="directory for index.html (default: data/site)")
-    sub.add_parser("picker", help="pick helper page: legal picks per shooter, as text to paste").add_argument(
-        "--out", type=Path, default=Path("data/site"), help="directory for picks.html (default: data/site)")
+    p = sub.add_parser("picker", help="pick helper page: legal picks per shooter, as text to paste")
+    p.add_argument("--out", type=Path, default=Path("data/site"), help="directory for picks.html (default: data/site)")
+    p.add_argument("--text-only", action="store_true",
+                   help="write pick-text.html: copy text only, never the form (public, for shooters who can't sign in)")
     sub.add_parser("tabs", help="set up the Sheet's tabs for a week's cycle").add_argument(
         "--week", type=int, help="default: the coming week")
     p.add_argument("--sheet", action="store_true", help="write the 'Week N' tab in the Google Sheet")
@@ -600,8 +603,9 @@ def main(argv=None) -> int:
             text = f"Wrote {args.out / 'index.html'}\n"
         elif args.command == "picker":
             args.out.mkdir(parents=True, exist_ok=True)
-            (args.out / "picks.html").write_text(picker(season, store, now, source))
-            text = f"Wrote {args.out / 'picks.html'}\n"
+            page = args.out / ("pick-text.html" if args.text_only else "picks.html")
+            page.write_text(picker(season, store, now, source, args.text_only))
+            text = f"Wrote {page}\n"
         elif args.command == "tabs":
             week = args.week or upcoming_week(season, now)
             refresh(store, season, source, tab_plan(season, week, [])[0])

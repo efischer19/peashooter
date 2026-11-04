@@ -110,3 +110,16 @@ def test_form_stays_off_the_page_until_switched_on(store, monkeypatch):
         raise AssertionError("expected a missing-entry error")
     except ValueError as e:
         assert "google_form.py --status" in str(e)
+
+
+def test_text_only_page_never_has_the_form(store, monkeypatch):
+    season = make_season(members=(Member("Alice", "U123", alias="Ace"), Member("Bob")))
+    store.upsert_games(week_schedule(season, 1))
+    for key, value in FORM_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setenv("PEASHOOTER_PICKER_FORM", "1")
+    html = admin.picker(season, store, at(season, 1, 0, 12), text_only=True)
+    data = page_data(html)
+    assert data["formUrl"] == "" and data["roster"] == {} and data["formWeek"] is None
+    assert "docs.google.com" not in html and "Alice" not in html
+    assert list(data["weeks"][0]["shooters"]) == ["Ace", "Shooter 2"]

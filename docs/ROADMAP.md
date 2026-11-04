@@ -94,6 +94,8 @@ Once Access is in front of the page, the build gets the Form entry IDs and the p
   - **Installed iOS PWAs keep their own cookies**, so the login may finish in Safari and not carry back into the app.
   - **The manifest and icons are fetched without the login cookie.** Add an Access Bypass for them, or use `crossorigin="use-credentials"`.
 
+**Stopgap (Nov 3): `<site>/peashooter/pick-text`.** Two shooters can't sign in to Slack, so the Access login doesn't work for them. `picker --text-only` publishes the Phase 0 page (aliases, copy text, no Form, no roster names) at a path outside the Access application, and they paste its text into the Form. Nothing links to it. `/picks` stays the real thing; drop the stopgap once everyone can sign in, or once there's another login method (e.g. a one-time PIN to email in Access).
+
 ## Picker, Phase 2: submit from the page (built Oct 29)
 - **Preferred:** a `no-cors` POST from the browser to the Form's `/formResponse` with the `entry.*` fields. It's fully serverless. The page can't read the response, so confirmation comes from the Monday close, or from DMs later.
 - **Upgrade, if spoofing ever matters:** a Cloudflare Worker that verifies `Cf-Access-Jwt-Assertion` and posts to the Form server-side, filling in Name from the verified login. The pool machine stays untouched either way.
