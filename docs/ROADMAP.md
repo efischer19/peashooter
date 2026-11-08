@@ -106,8 +106,8 @@ Once Access is in front of the page, the build gets the Form entry IDs and the p
 - Later, if wanted: the Slack DM bot sends submission confirmations.
 
 ## Results on yesterday's thread (built Oct 30)
-Each morning, `digest --post` edits yesterday's digest thread reply before posting today's, marking each picked team ✅ or ❌ (➖ if void). It's a daily thing, not live scores.
-- **Decided Oct 30:** only the thread reply changes, with emoji and no scores. The main message, its morning standings included, stays as posted, with no note.
+Each morning, `digest --post` edits yesterday's digest thread reply before posting today's, adding each final score (`SAS 125 @ POR 103`, added Nov 8) and marking each picked team ✅ or ❌ (➖ if void). It's a daily thing, not live scores.
+- **Decided Oct 30:** only the thread reply changes. The main message, its morning standings included, stays as posted, with no note.
 - The channel and `ts` of each digest are saved in a `posts` table, and `chat.update` needs only `chat:write`. A hash of the last sent reply skips edits that change nothing.
 - Re-rendering also reveals picks that were still 🔒 that morning (Monday's games, before the lock), and switches the watch links to the highlights and replay.
 - `admin.py [--post] results [--day]` does it by hand. `--channel/--ts/--reply-ts` records a digest posted before the `ts` were saved (Oct 29's was backfilled this way).

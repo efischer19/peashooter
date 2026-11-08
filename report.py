@@ -240,6 +240,13 @@ def digest_md(season: Season, week: int, now: datetime, rows: list, yesterday: l
     return "\n".join(lines) + "\n", games_md(season, week, games, pickers, hidden)
 
 
+def matchup(game: Game, label=str) -> str:
+    """'SAS @ POR', or 'SAS 125 @ POR 103' once final. `label` turns a team code into what to show."""
+    if game.winner is None:
+        return f"{label(game.away)} @ {label(game.home)}"
+    return f"{label(game.away)} {game.away_score} @ {label(game.home)} {game.home_score}"
+
+
 def picked_team(season: Season, game: Game, team: str) -> str:
     """A picked team's nickname, marked ✅/❌ once the game is final (➖ if void); unmarked while pending."""
     mark = pick_result(season, game, team)
@@ -247,12 +254,12 @@ def picked_team(season: Season, game: Game, team: str) -> str:
 
 
 def games_md(season: Season, week: int, games: list, pickers: dict, hidden: set) -> str:
-    """The digest thread as text: the day's games with who picked what, marked ✅/❌ once final."""
+    """The digest thread as text: the day's games with who picked what, with scores and ✅/❌ once final."""
     out = [f"*Today: {len(games)} game{'s' if len(games) != 1 else ''}* (times ET)"]
     notes = []
     for g in sorted(games, key=lambda g: g.tip):
         special = season.special_for(g.tip)
-        line = f"• {clock(g.tip.astimezone(season.tz))} · {nickname(g.away)} @ {nickname(g.home)}{event_tag(g)}{national_tv(g)}"
+        line = f"• {clock(g.tip.astimezone(season.tz))} · {matchup(g, nickname)}{event_tag(g)}{national_tv(g)}"
         if special:
             line += f" ⭐ {special.name}, {special.points} pts"
         if g.id in hidden:
@@ -332,7 +339,7 @@ def games_blocks(season: Season, week: int, games: list, pickers: dict, hidden: 
     table, footnotes = [[_cell(h, bold=True) for h in ("ET", "Game", "Picks", "Watch")]], []
     for g in sorted(games, key=lambda g: g.tip):
         special = season.special_for(g.tip)
-        matchup = f"{g.away} @ {g.home}{event_tag(g)}" + (f" ⭐ {special.points} pts" if special else "")
+        game = matchup(g) + event_tag(g) + (f" ⭐ {special.points} pts" if special else "")
         if g.id in hidden:
             note = "⭐ bonus-game picks show once the game tips" if special else \
                 f"Week {week} picks lock {season.deadline(week):%a} {clock(season.deadline(week))} ET and show after that"
@@ -342,7 +349,7 @@ def games_blocks(season: Season, week: int, games: list, pickers: dict, hidden: 
             picked = pickers.get(g.id, {})
             picks = " · ".join(f"{picked_team(season, g, t)} — {', '.join(picked[t])}"
                                for t in g.teams if t in picked) or "–"
-        table.append([_cell(clock(g.tip.astimezone(season.tz))), _cell(matchup, bold=True), _cell(picks),
+        table.append([_cell(clock(g.tip.astimezone(season.tz))), _cell(game, bold=True), _cell(picks),
                       _links_cell(watch_links(g))])
     reply = [{"type": "section", "text": {"type": "mrkdwn",
                                           "text": f"*Today · {len(games)} game{'s' if len(games) != 1 else ''}*"}},

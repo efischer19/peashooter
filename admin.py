@@ -6,7 +6,7 @@
     uv run --extra google --extra nba admin.py [--post] monday     # deadline: close, ingest, grid, summary
     uv run --extra google --extra nba admin.py daily               # sync scores, rebuild grids
     uv run --extra nba admin.py [--post] digest                    # morning: standings + today's games
-    uv run --extra nba admin.py [--post] results [--day 2026-10-29]  # mark a digest's thread with ✅/❌
+    uv run --extra nba admin.py [--post] results [--day 2026-10-29]  # add scores and ✅/❌ to a digest's thread
     uv run --extra nba admin.py site [--out data/site]             # public scoreboard page (index.html)
     uv run --extra google --extra nba admin.py ingest --week 1 [--dry-run]   # reads the Sheet
     uv run --extra nba admin.py ingest responses.csv --week 1               # or a CSV export
@@ -394,7 +394,7 @@ def save_digest(season: Season, store: Store, now: datetime, post, stamps: list)
 
 
 def results(season: Season, store: Store, now: datetime, day: date, source=None, post: bool = False) -> str:
-    """A day's digest thread re-rendered with ✅/❌ for its final games. With `post`, edit that thread reply in
+    """A day's digest thread re-rendered with scores and ✅/❌ for its final games. With `post`, edit that thread reply in
     Slack, unless nothing changed since it was last sent; without, just print it."""
     from slack_post import update
 
@@ -520,7 +520,7 @@ def main(argv=None) -> int:
     sub.add_parser("daily", help="sync scores and rebuild the cycle's tabs (no post)")
     sub.add_parser("digest", help="morning post: standings, yesterday's results, today's games and picks; "
                                   "with --post, first marks yesterday's thread with ✅/❌")
-    p = sub.add_parser("results", help="a digest's thread with ✅/❌ marks; with --post, edit it in Slack")
+    p = sub.add_parser("results", help="a digest's thread with scores and ✅/❌; with --post, edit it in Slack")
     p.add_argument("--day", type=date.fromisoformat, help="the digest's date (default: yesterday)")
     p.add_argument("--channel", help="with --ts and --reply-ts: record a digest posted before they were saved")
     p.add_argument("--ts", help="the digest's main message ts (from its link: p1793261704092389 → 1793261704.092389)")

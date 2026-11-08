@@ -162,8 +162,11 @@ def test_results_mark_yesterdays_thread_once(store, season, monkeypatch):
     assert admin.results(season, store, wed, day, post=True) == "Results: marked the Tue Oct 27 digest thread\n"
     channel, ts, text, blocks = edits[0]
     assert (channel, ts) == ("C1", "reply.1")
-    assert f"{name(tue[0].away)} ❌ (Bob) · {name(tue[0].home)} ✅ (Alice)" in text
-    assert cells(blocks[1])[1][2] == f"{name(tue[0].away)} ❌ — Bob · {name(tue[0].home)} ✅ — Alice"
+    assert (f"• 7:30 pm · {name(tue[0].away)} 100 @ {name(tue[0].home)} 110: "
+            f"{name(tue[0].away)} ❌ (Bob) · {name(tue[0].home)} ✅ (Alice)") in text
+    row = cells(blocks[1])[1]
+    assert row[1] == f"{tue[0].away} 100 @ {tue[0].home} 110"
+    assert row[2] == f"{name(tue[0].away)} ❌ — Bob · {name(tue[0].home)} ✅ — Alice"
     assert admin.results(season, store, wed, day, post=True).endswith("is up to date\n") and len(edits) == 1
     assert admin.results(season, store, wed, day) == text  # without --post: just the text
     assert admin.results(season, store, wed, at(season, 1, 3).date(), post=True) == \
