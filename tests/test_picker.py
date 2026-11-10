@@ -123,3 +123,39 @@ def test_text_only_page_never_has_the_form(store, monkeypatch):
     assert data["formUrl"] == "" and data["roster"] == {} and data["formWeek"] is None
     assert "docs.google.com" not in html and "Alice" not in html
     assert list(data["weeks"][0]["shooters"]) == ["Ace", "Shooter 2"]
+
+
+def test_text_only_page_offers_the_locked_week_during_grace(store, season):
+    store.upsert_games(week_schedule(season, 1) + week_schedule(season, 2) + week_schedule(season, 3))
+    assert picker.picker_weeks(season, at(season, 1, 0, 19), late=True) == [1, 2, 3]  # Monday night: week 1 in grace
+    assert picker.picker_weeks(season, at(season, 1, 2, 19), late=True) == [2, 3]  # Wednesday: grace is over
+    assert [w["week"] for w in page_data(admin.picker(season, store, at(season, 1, 0, 19)))["weeks"]] == [2, 3]
+    data = page_data(admin.picker(season, store, at(season, 1, 0, 19), text_only=True))["weeks"]
+    assert [w["week"] for w in data] == [1, 2, 3]
+    assert data[0]["late"] and data[0]["graceEndAt"] == season.grace_end(1).isoformat() and "late" not in data[1]
+
+
+def test_late_week_counts_this_weeks_picks_and_skips_tipped_games(store):
+    season = make_season(members=(Member("Alice", alias="Ace"), Member("Bob")))
+    store.upsert_games(week_schedule(season, 1))
+    tue, thu = [g for g in week_schedule(season, 1) if g.tip.weekday() == 1], \
+        [g for g in week_schedule(season, 1) if g.tip.weekday() == 3]
+    pick(store, season, "Alice", 1, thu[0].id, thu[0].home)
+    now = tue[0].tip  # Tuesday's games have tipped
+    data = picker.week_data(season, store, 1, now)
+    ace, bob = data["shooters"]["Ace"], data["shooters"]["Shooter 2"]
+    assert ace["used"] == {thu[0].home: 1} and ace["slots"] == season.picks_per_week - 1 and bob["slots"] == season.picks_per_week
+    assert not any(x.startswith(f"{g.id}|") for g in tue for x in bob["legal"])
+    assert f"{thu[0].id}|{thu[0].away}" in ace["legal"] and f"{thu[0].id}|{thu[0].home}" not in ace["legal"]
+    assert "slots" not in picker.week_data(season, store, 1)["shooters"]["Ace"]
+
+
+def test_teams_picked_for_a_later_week_are_off_this_week(store):
+    season = make_season(members=(Member("Alice", alias="Ace"),))
+    store.upsert_games(week_schedule(season, 1) + week_schedule(season, 2))
+    later = week_schedule(season, 2)[0]
+    pick(store, season, "Alice", 2, later.id, later.home)
+    for data in (picker.week_data(season, store, 1), picker.week_data(season, store, 1, at(season, 1, 0, 19))):
+        ace = data["shooters"]["Ace"]
+        assert ace["used"] == {later.home: 2} and not any(x.endswith(f"|{later.home}") for x in ace["legal"])
+    assert picker.week_data(season, store, 1, at(season, 1, 0, 19))["shooters"]["Ace"]["slots"] == season.picks_per_week

@@ -178,3 +178,12 @@ def test_override_accepts_a_ruling_after_tip_and_grace(tmp_path):
     # other rules still apply: no slot left, and the Monday game tipped before the form deadline
     out = admin.replace(season, store, 1, "Bob", "Celtics mon", wed, override="x")
     assert "✅" not in out
+
+
+def test_override_fills_a_week_with_no_form_response(tmp_path):
+    s = make_season()
+    season, store, responses = setup(tmp_path, [csv_row(at(s, 1, 0, 12), "Bob", "Week 1", [tue_pick(0)])])
+    store.upsert_games(week_schedule(season, 2))
+    picks = ", ".join(tue_pick(i) for i in range(season.picks_per_week + 1))
+    out = admin.replace(season, store, 2, "Alice", picks, at(season, 1, 0, 19), override="picked early")
+    assert out.count("✅") == season.picks_per_week and "over the weekly pick limit" in out
