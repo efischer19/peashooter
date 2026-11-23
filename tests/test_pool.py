@@ -1,6 +1,7 @@
 """Store-backed pool flow, including a simulated multi-week fixture season."""
 
 import json
+from dataclasses import replace
 from datetime import timedelta
 
 import pool
@@ -107,3 +108,12 @@ def test_simulated_season_cycles_standings_and_grid(store, season):
     assert table["Cat"]["points"] == 0  # all away teams
     assert table["Alice"]["pending"] == 10  # week 4 not final
     assert table["Alice"]["rank"] == 1
+
+
+def test_pick_limit_exception_accepts_more_picks(store, season):
+    season = replace(season, pick_limits=((1, "Alice", 12),))
+    load_weeks(store, season, 1)
+    submit(store, season, "Alice", 1, CODES[:12])
+    submit(store, season, "Bob", 1, CODES[:12])
+    assert len(store.picks(member="Alice", accepted=True)) == 12
+    assert len(store.picks(member="Bob", accepted=True)) == season.picks_per_week

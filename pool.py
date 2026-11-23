@@ -54,7 +54,7 @@ def ingest_form(store: Store, season: Season, member: str, week: int, selections
     else:
         decisions = rules.validate_regular(season, week, store.games_by_id(), selections,
                                            used_teams(store, season, member, week),
-                                           cutoff=season.deadline(week), slots=season.picks_per_week)
+                                           cutoff=season.deadline(week), slots=season.picks_for(member, week))
     decisions = list(unparsed) + decisions
     store.replace_picks(member, week, REGULAR, "form", decisions, submitted_at)
     return decisions
@@ -66,7 +66,7 @@ def open_slots(store: Store, season: Season, member: str, week: int) -> int:
     refillable = sum(1 for p in picks if p.source == "form" and not p.accepted and p.code not in rules.NOT_REFILLABLE)
     replaced = sum(1 for p in picks if p.source == "dm" and p.accepted)
     accepted = sum(1 for p in picks if p.accepted)
-    return max(0, min(refillable - replaced, season.picks_per_week - accepted))
+    return max(0, min(refillable - replaced, season.picks_for(member, week) - accepted))
 
 
 def submit_replacements(store: Store, season: Season, member: str, week: int, selections: list,
@@ -90,7 +90,7 @@ def submit_override(store: Store, season: Season, member: str, week: int, select
     accepted = sum(1 for p in store.picks(member=member, weeks=[week], kind=REGULAR) if p.accepted)
     decisions = rules.validate_regular(season, week, store.games_by_id(), selections,
                                        used_teams(store, season, member, week, include_current=True),
-                                       cutoff=season.deadline(week), slots=max(0, season.picks_per_week - accepted))
+                                       cutoff=season.deadline(week), slots=max(0, season.picks_for(member, week) - accepted))
     decisions = [d if not d.accepted else rules.Decision(d.game_id, d.team, True, note=f"Override: {reason}")
                  for d in decisions]
     store.add_picks(member, week, REGULAR, "admin", decisions, now)

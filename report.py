@@ -145,10 +145,11 @@ def ingest_summary_md(season: Season, week: int, results: dict, missing: list, l
         bad = [d for d in decisions if not d.accepted and d.code != rules.OVER_LIMIT]
         if ignored:
             extras.append(f"{names.get(member, member)} ({', '.join(nickname(d.team) for d in ignored)})")
-        if not bad and ok == season.picks_per_week:
-            clean.append(names.get(member, member))
+        limit = season.picks_for(member, week)
+        if not bad and ok == limit:
+            clean.append(names.get(member, member) + (f" ({limit})" if limit != season.picks_per_week else ""))
             continue
-        problems.append(f"• *{names.get(member, member)}*: {ok}/{season.picks_per_week} picks count")
+        problems.append(f"• *{names.get(member, member)}*: {ok}/{limit} picks count")
         problems += [f"    ◦ {d.note}" for d in bad]
     if clean:
         sections.append(f"✅ All {season.picks_per_week} good: {', '.join(clean)}")

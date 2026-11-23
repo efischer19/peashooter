@@ -152,7 +152,7 @@ def build_week_grid(season: Season, week: int, games: list, picks: list, now: da
             accepted = [p for p in this_week[m].values() if p.accepted]
             games_by_id = {g.id: g for g in games}
             pts = [rules.pick_points(season, games_by_id.get(p.game_id), p.team) for p in accepted]
-            counted.append(f"{len(accepted)}/{season.picks_per_week}" if revealed else "")
+            counted.append(f"{len(accepted)}/{season.picks_for(m, week)}" if revealed else "")
             pending = sum(x is None for x in pts)
             points.append((f"{sum(x or 0 for x in pts)}" + (f" (+{pending}⏳)" if pending else "")) if revealed else "")
             spent = set(used_week[m]) | (picked_teams[m] if revealed else set())

@@ -46,6 +46,12 @@ class Season:
     off_weeks: tuple = ()  # ((week, label), ...)
     specials: tuple = ()
     members: tuple = ()
+    pick_limits: tuple = ()  # ((week, member, picks), ...): one-off exceptions to picks_per_week
+
+    def picks_for(self, member: str, week: int) -> int:
+        """The member's weekly pick limit: picks_per_week, unless [pick_limits] makes an exception."""
+        return next((n for w, m, n in self.pick_limits if w == week and m.casefold() == member.casefold()),
+                    self.picks_per_week)
 
     def week_start(self, week: int) -> datetime:
         return datetime.combine(self.week1_start + timedelta(weeks=week - 1), time(0), self.tz)
@@ -114,10 +120,15 @@ def load_season(path: Path | None = None) -> Season:
         off_weeks=tuple(sorted((int(k), v) for k, v in raw.get("off_weeks", {}).items())),
         specials=tuple(Special(x["name"], x["date"], int(x["points"])) for x in raw.get("specials", [])),
         members=tuple(Member(m["name"], m.get("slack_id", ""), m.get("alias", "")) for m in raw.get("members", [])),
+        pick_limits=tuple((int(w), name, int(n)) for w, limits in raw.get("pick_limits", {}).items()
+                          for name, n in limits.items()),
     )
     names = [m.name.casefold() for m in season.members]
     if len(set(names)) != len(names):
         raise ValueError("member names must be unique")
+    strangers = [m for _, m, _ in season.pick_limits if not season.member(m)]
+    if strangers:
+        raise ValueError(f"pick_limits name unknown members: {strangers}")
     bad = [w for w, _ in season.off_weeks if not 1 <= w <= season.weeks]
     if bad:
         raise ValueError(f"off_weeks {bad} are outside weeks 1-{season.weeks}")

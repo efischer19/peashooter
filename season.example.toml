@@ -18,6 +18,10 @@ grace_hours = 24                # dropped picks can be replaced by DM until dead
 # removing an off week only moves weeks after it. Decide before that week's form goes out.
 # 2026-27: 24 regular weeks = 4 cycles of 6 (Oct 19, Nov 30, Jan 18, Mar 1), the last two
 # breaking cleanly at the All-Star break (Feb 19-24, which every team still plays through).
+# One-off exceptions to picks_per_week, by week then member name (e.g. a shooter catching up at the end of a cycle).
+# [pick_limits]
+# 6 = { TD = 9 }
+
 [off_weeks]
 8 = "NBA Cup Final week"        # Dec 7-13; two teams have no regular game, most have one
 

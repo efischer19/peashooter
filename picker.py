@@ -89,9 +89,10 @@ def week_data(season: Season, store, week: int, now: Optional[datetime] = None) 
             options = rules.legal_options(season, week, games, set(used), now)
         else:
             options = [(g, t) for g, t in pool.form_options(store, season, m.name, week) if used.get(t, 0) < week]
-        shooter = {"used": used, "legal": [f"{g.id}|{t}" for g, t in options]}
+        limit = season.picks_for(m.name, week)
+        shooter = {"used": used, "legal": [f"{g.id}|{t}" for g, t in options], "perWeek": limit}
         if late:
-            shooter["slots"] = max(0, season.picks_per_week - sum(1 for w in used.values() if w == week))
+            shooter["slots"] = max(0, limit - sum(1 for w in used.values() if w == week))
         out["shooters"][names[m.name]] = shooter
     return out
 
@@ -205,7 +206,8 @@ let me = null, sending = false;  // me: the signed-in shooter's alias, from Clou
 
 const locked = w => Date.now() > Date.parse(w.late ? w.graceEndAt : w.deadlineAt);
 const tipped = g => Date.now() >= Date.parse(g.tipAt);
-const cap = () => weekData().late ? shooter().slots : DATA.perWeek;  // late picks only fill the open slots
+const perWeek = () => shooter().perWeek ?? DATA.perWeek;  // the shooter's limit this week (a one-off can raise it)
+const cap = () => weekData().late ? shooter().slots : perWeek();  // late picks only fill the open slots
 function weekData() { return DATA.weeks.find(w => w.week === state.week); }
 function shooter() { return weekData().shooters[state.shooter]; }
 
@@ -235,7 +237,7 @@ function sent() { try { return JSON.parse(localStorage.getItem(sentKey()) || "nu
 
 async function submit() {
   const w = weekData(), text = $("text").value, n = state.picks.length;
-  if (n < DATA.perWeek && !confirm(`Send only ${n} of ${DATA.perWeek} picks? You can send again before the deadline; the latest one counts.`)) return;
+  if (n < perWeek() && !confirm(`Send only ${n} of ${perWeek()} picks? You can send again before the deadline; the latest one counts.`)) return;
   const body = new URLSearchParams();
   body.set(`entry.${DATA.entries.name}`, DATA.roster[me].name);
   body.set(`entry.${DATA.entries.week}`, `Week ${w.week}`);
@@ -292,8 +294,8 @@ function render() {
   const w = weekData(), s = shooter(), legal = new Set(s.legal);
   const chosen = new Set(state.picks.map(p => p.team)), slots = cap(), full = state.picks.length >= slots;
   $("deadline").textContent = w.late && locked(w) ? `Week ${w.week} is closed, late picks too (${w.graceEnd}).`
-    : w.late && !slots ? `Week ${w.week} locked ${w.deadline}. ${state.shooter} has all ${DATA.perWeek} picks in.`
-    : w.late ? `Week ${w.week} locked ${w.deadline}. Late picks: ${state.shooter} has ${slots} of ${DATA.perWeek} left to pick; DM them to the organizer by ${w.graceEnd}. Games that have started are locked; teams already picked are greyed out.`
+    : w.late && !slots ? `Week ${w.week} locked ${w.deadline}. ${state.shooter} has all ${perWeek()} picks in.`
+    : w.late ? `Week ${w.week} locked ${w.deadline}. Late picks: ${state.shooter} has ${slots} of ${perWeek()} left to pick; DM them to the organizer by ${w.graceEnd}. Games that have started are locked; teams already picked are greyed out.`
     : locked(w) ? `Week ${w.week} picks locked ${w.deadline}.`
     : `Picks due ${w.deadline}. Games before then are locked; teams you've used this cycle are greyed out.`;
   $("left").innerHTML = Object.keys(DATA.teams).sort((a, b) => DATA.teams[a].nick.localeCompare(DATA.teams[b].nick))
@@ -337,8 +339,8 @@ function render() {
   const button = $("submit");
   button.style.display = mine ? "" : "none";
   button.disabled = sending || !picks.length;
-  button.textContent = sending ? "Sending…" : picks.length && picks.length < DATA.perWeek
-    ? `Submit ${picks.length} of ${DATA.perWeek}` : "Submit picks";
+  button.textContent = sending ? "Sending…" : picks.length && picks.length < perWeek()
+    ? `Submit ${picks.length} of ${perWeek()}` : "Submit picks";
   const last = mine ? sent() : null;
   $("status").textContent = sending ? "" : last
     ? `Sent ${new Date(last.at).toLocaleString([], {weekday: "short", hour: "numeric", minute: "2-digit"})}: ${last.text.split("\n").join(" · ")}. Sending again replaces it; Monday's summary in Slack is the record.`

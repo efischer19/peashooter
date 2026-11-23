@@ -99,3 +99,14 @@ def test_off_week_out_of_range_rejected(tmp_path):
     f.write_text('[season]\nname = "x"\nweek1_start = 2026-10-26\nweeks = 3\n[off_weeks]\n5 = "nope"\n')
     with pytest.raises(ValueError, match="outside weeks"):
         load_season(f)
+
+
+def test_pick_limits_make_one_off_exceptions(tmp_path):
+    f = tmp_path / "s.toml"
+    base = '[season]\nname = "x"\nweek1_start = 2026-10-19\nweeks = 6\npicks_per_week = 5\n[[members]]\nname = "TD"\n'
+    f.write_text(base + '[pick_limits]\n6 = { TD = 9 }\n')
+    s = load_season(f)
+    assert s.picks_for("TD", 6) == 9 and s.picks_for("td", 6) == 9 and s.picks_for("TD", 5) == 5
+    f.write_text(base + '[pick_limits]\n6 = { Zed = 9 }\n')
+    with pytest.raises(ValueError, match="unknown members"):
+        load_season(f)
